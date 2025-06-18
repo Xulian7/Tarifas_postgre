@@ -1683,38 +1683,37 @@ def ventana_propietario():
     cargar_propietarios()
 
 def join_and_export():
-    # Abrir el diálogo para seleccionar la carpeta de destino
+    # Selección de carpeta
     root = tk.Tk()
-    root.withdraw()  # Ocultar la ventana principal de Tkinter
+    root.withdraw()
     folder_selected = filedialog.askdirectory(title="Selecciona una carpeta para guardar el archivo")
 
-    if not folder_selected:  # Si el usuario cancela, salir de la función
+    if not folder_selected:
         messagebox.showwarning("Operación cancelada", "No se guardó ningún archivo.")
         return
 
     output_path = os.path.join(folder_selected, "resultado.xlsx")
 
-    # Conectar a la base de datos
-    conn = sqlite3.connect('diccionarios/base_dat.db')
+    try:
+        conn = get_connection()
 
-    # Definir la consulta SQL con el JOIN usando 'placa' como clave
-    query = """
-    SELECT r.*, p.*
-    FROM registros r
-    LEFT JOIN propietario p ON r.placa = p.placa
-    """
+        query = """
+        SELECT r.*, p.*
+        FROM registros r
+        LEFT JOIN propietario p ON r.placa = p.placa
+        """
 
-    # Ejecutar la consulta y cargar los datos en un DataFrame
-    merged_df = pd.read_sql_query(query, conn)
+        merged_df = pd.read_sql_query(query, conn)
+        merged_df.to_excel(output_path, index=False)
 
-    # Cerrar la conexión
-    conn.close()
+        messagebox.showinfo("Exportación exitosa", f"El archivo .xlsx se guardó en:\n{output_path}")
 
-    # Exportar a Excel en la carpeta seleccionada
-    merged_df.to_excel(output_path, index=False)
+    except Exception as e:
+        messagebox.showerror("Error", f"Ocurrió un error:\n{e}")
 
-    # Mostrar mensaje con la ruta del archivo guardado
-    messagebox.showinfo("Exportación exitosa", f"El archivo .xlsx se guardó en:\n{output_path}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 def mostrar_consulta_registros():
     # Función para crear y mostrar la interfaz de consulta
@@ -2215,6 +2214,61 @@ def ui_atrasos(entry_nombre, entry_placa, entry_cedula):
                 tree.insert("", "end", values=fila)
     
     entry_filtro.bind("<KeyRelease>", filtrar_treeview)  # Filtrar al escribir
+
+
+def calcular_atraso_simple():
+    conn = get_connection()
+    clientes = pd.read_sql("SELECT * FROM clientes", conn)
+    registros = pd.read_sql("SELECT * FROM registros", conn)
+    conn.close()
+
+    clientes = clientes[~clientes['Placa'].str.contains(r'\*', regex=True)]
+    df = clientes[['Placa', 'Cedula', 'Nombre', 'Fecha_inicio', 'Valor_cuota']].copy()
+
+    hoy = datetime.now()
+    df['Fecha_inicio'] = pd.to_datetime(df['Fecha_inicio'])
+    df['dias_transcurridos'] = (hoy - df['Fecha_inicio']).dt.days + 1
+
+    dias_atraso = []
+    for _, fila in df.iterrows():
+        cedula = fila['Cedula']
+        placa = fila['Placa']
+        valor_cuota = fila['Valor_cuota']
+
+        pagos = registros[(registros['Cedula'] == cedula) & (registros['Placa'] == placa)]
+        total_pagado = pagos['Valor'].sum()
+        cuotas_pagas = total_pagado / valor_cuota if valor_cuota > 0 else 0
+        atraso = fila['dias_transcurridos'] - cuotas_pagas
+        dias_atraso.append(round(atraso, 1))
+
+    df['dias_atraso'] = dias_atraso
+    return df[['Placa', 'Cedula', 'Nombre', 'dias_atraso']].sort_values(by='dias_atraso', ascending=False)
+
+def mostrar_atrasos_en_tree():
+    df = calcular_atraso_simple()
+
+    ventana = tk.Toplevel()
+    ventana.title("Reporte de Atrasos")
+    ventana.geometry("600x400")
+
+    frame = tk.Frame(ventana)
+    frame.pack(fill="both", expand=True)
+
+    tree = ttk.Treeview(frame, columns=list(df.columns), show='headings')
+    vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
+    vsb.pack(side="right", fill="y")
+    tree.pack(fill="both", expand=True)
+
+    for col in df.columns:
+        tree.heading(col, text=col)
+        tree.column(col, anchor="center")
+
+    for _, fila in df.iterrows():
+        tree.insert('', 'end', values=list(fila))
+
+    ventana.mainloop()
+
 
 def gestionar_blacklist():
     conn = sqlite3.connect(DB_PATH)

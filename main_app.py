@@ -382,7 +382,7 @@ btn_propietario.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=mostrar_consulta_registros)
 btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
 
-btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: ui_atrasos(entry_nombre, entry_placa, entry_cedula))
+btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=calcular_atraso_simple)
 btn_mora.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 
 btn_blacklist = tk.Button(frame_botones, text=" Lista negra", image=cargar_imagen("blacklist"), compound="left", width=ancho_widget, command=gestionar_blacklist)
