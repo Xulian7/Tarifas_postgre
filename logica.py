@@ -1843,18 +1843,17 @@ def mostrar_consulta_registros():
 
 def ui_atrasos(entry_nombre, entry_placa, entry_cedula):
 
-    # Conexión a la base de datos
-    def conectar_db():
-        conn = sqlite3.connect('diccionarios/base_dat.db')
-        return conn
-
-    # Cargar datos de la tabla 'registros' y 'clientes'
     def cargar_datos():
-        conn = conectar_db()
-        registros = pd.read_sql_query("SELECT * FROM registros", conn)
-        clientes = pd.read_sql_query("SELECT * FROM clientes", conn)
-        conn.close()
-        return registros, clientes
+        try:
+            conn = get_connection()
+            registros = pd.read_sql("SELECT * FROM registros", conn)
+            clientes = pd.read_sql("SELECT * FROM clientes", conn)
+            return registros, clientes
+        except Exception as e:
+            print(f"Error al cargar datos: {e}")
+            return pd.DataFrame(), pd.DataFrame()
+        finally:
+            conn.close()
 
     # Calcular el riesgo de deuda
 

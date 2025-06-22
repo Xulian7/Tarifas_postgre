@@ -11,7 +11,6 @@ from tkinter import PhotoImage
 from logica import *  # Importar todas las funciones de logica.py
 import psycopg2
 
-
 # Cargar las variables del archivo .env
 load_dotenv()
 # Acceder a las variables
@@ -20,7 +19,6 @@ DB_PORT = os.getenv("DB_PORT")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
-
 
 
 datos_cargados = []  # Variable global para guardar los datos de tree
@@ -53,13 +51,13 @@ frame_formulario = tk.Frame(frame_izquierdo, bd=2, relief="solid")
 frame_formulario.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
 # Campos del formulario organizados en filas
-tk.Label(frame_formulario, text="Cédula:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Cédula:").grid(row=0, column=0, padx=5, pady=3, sticky="e")
 entry_cedula = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_cedula.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+entry_cedula.grid(row=0, column=1, padx=5, pady=3, sticky="w")
 
-tk.Label(frame_formulario, text="Nombre:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Nombre:").grid(row=1, column=0, padx=5, pady=3, sticky="e")
 entry_nombre = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_nombre.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+entry_nombre.grid(row=1, column=1, padx=5, pady=3, sticky="w")
 
 def actualizar_sugerencias(event):
     texto = entry_nombre.get()
@@ -95,12 +93,11 @@ def actualizar_sugerencias(event):
     else:
         listbox_sugerencias.grid_forget()
 
-
 entry_nombre.bind("<KeyRelease>", actualizar_sugerencias)
 
-tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=3, sticky="e")
 entry_placa = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_placa.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+entry_placa.grid(row=2, column=1, padx=5, pady=3, sticky="w")
 
 def actualizar_sugerencias_por_placa(event):
     texto = entry_placa.get().strip().upper()
@@ -136,7 +133,6 @@ def actualizar_sugerencias_por_placa(event):
     else:
         listbox_sugerencias.grid_forget()
 
-
 entry_placa.bind("<KeyRelease>", actualizar_sugerencias_por_placa)
 
 # Crear la función para seleccionar la sugerencia y actualizar los otros campos
@@ -169,29 +165,6 @@ def seleccionar_sugerencia(event):
                 entry_placa.delete(0, tk.END)
                 entry_placa.insert(0, placa)
 
-                # Suma en otras_deudas
-                cursor.execute("""
-                    SELECT COALESCE(SUM(valor), 0) 
-                    FROM otras_deudas 
-                    WHERE cedula = %s AND placa = %s
-                """, (cedula, placa))
-                total_otras_deudas = cursor.fetchone()[0]
-
-                # Suma en registros
-                cursor.execute("""
-                    SELECT COALESCE(SUM(saldos), 0) 
-                    FROM registros 
-                    WHERE cedula = %s AND placa = %s
-                """, (cedula, placa))
-                total_registros_saldos = cursor.fetchone()[0]
-
-                # Deuda neta
-                deuda_neta = total_otras_deudas - total_registros_saldos
-
-                entry_deuda.config(state="normal")
-                entry_deuda.delete(0, tk.END)
-                entry_deuda.insert(0, f"${int(deuda_neta):,}".replace(",", "."))
-                entry_deuda.config(state="readonly")
 
         except psycopg2.Error as e:
             messagebox.showerror("Error", f"Error de base de datos:\n{e}")
@@ -202,29 +175,22 @@ def seleccionar_sugerencia(event):
 
         listbox_sugerencias.place_forget()
 
-
-
-tk.Label(frame_formulario, text="Valor:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Tarifa:").grid(row=3, column=0, padx=5, pady=3, sticky="e")
 entry_monto = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_monto.grid(row=3, column=1, padx=5, pady=5, sticky="w")
+entry_monto.grid(row=3, column=1, padx=5, pady=3, sticky="w")
 
-tk.Label(frame_formulario, text="Saldos:").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Otros:").grid(row=4, column=0, padx=5, pady=3, sticky="e")
 entry_saldos = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_saldos.grid(row=4, column=1, padx=5, pady=5, sticky="w")
+entry_saldos.grid(row=4, column=1, padx=5, pady=3, sticky="w")
 
-tk.Label(frame_formulario, text="Referencia:").grid(row=5, column=0, padx=5, pady=5, sticky="e")
-var_referencia = tk.StringVar()
-
-def to_uppercase(*args):
-    var_referencia.set(var_referencia.get().upper())
-
-var_referencia.trace_add("write", to_uppercase)
-entry_referencia = tk.Entry(frame_formulario, width=ancho_widget, justify="center", textvariable=var_referencia)
-entry_referencia.grid(row=5, column=1, padx=5, pady=5, sticky="w")
+tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3, sticky="e")
+tipos_opciones = ["N-a", "otras deudas", "multa"]
+combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=27)
+combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
 
 # Crea el frame para las sugerencias
 frame_sugerencias = tk.Frame(frame_formulario, width=150, height=100)  # Ajusta según necesidad
-frame_sugerencias.grid(row=0, column=2, rowspan=5, padx=5, pady=5, sticky="nsew")
+frame_sugerencias.grid(row=0, column=2, rowspan=5, padx=5, pady=3, sticky="nsew")
 # Crea el Listbox dentro del frame_sugerencias
 listbox_sugerencias = tk.Listbox(frame_sugerencias, height=10, width=30, justify="center")  # Ajusta el width
 listbox_sugerencias.grid(row=0, column=0, sticky="nsew") 
@@ -236,13 +202,13 @@ listbox_sugerencias.bind("<<ListboxSelect>>", seleccionar_sugerencia)
 # Actualizar las sugerencias
 
 fecha_actual = datetime.now().strftime('%d-%m-%Y')
-tk.Label(frame_formulario, text="Fecha_sistema:").grid(row=0, column=3, padx=5, pady=5, sticky="e")
-entry_hoy = tk.Entry(frame_formulario, width=ancho_widget, justify="center", font=("Helvetica", 10, "bold"))
+tk.Label(frame_formulario, text="Fecha_sistema:").grid(row=0, column=3, padx=5, pady=3, sticky="e")
+entry_hoy = tk.Entry(frame_formulario, width=28, justify="center", font=("Helvetica", 10, "bold"))
 entry_hoy.insert(0, fecha_actual) 
 entry_hoy.config(state="disabled")
-entry_hoy.grid(row=0, column=4, padx=5, pady=5, sticky="e")
+entry_hoy.grid(row=0, column=4, padx=5, pady=3, sticky="e")
 
-tk.Label(frame_formulario, text="Fecha_registro:").grid(row=1, column=3, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Fecha_registro:").grid(row=1, column=3, padx=5, pady=3, sticky="e")
 entry_fecha = DateEntry(
     frame_formulario,
     width=ancho_widget,
@@ -254,18 +220,25 @@ entry_fecha = DateEntry(
     textvariable=tk.StringVar()  # Para inicializar vacío
 )
 entry_fecha.configure(justify="center")
-entry_fecha.grid(row=1, column=4, padx=5, pady=5, sticky="w")
+entry_fecha.grid(row=1, column=4, padx=5, pady=3, sticky="w")
 
-tk.Label(frame_formulario, text="Tipo:").grid(row=2, column=3, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Tipo:").grid(row=2, column=3, padx=5, pady=3, sticky="e")
 tipos_opciones = ["Consignación", "Transfer Nequi", "Bancolombia", "Transfiya", "PTM", "Efectivo", "Ajuste P/P"]
-
 combo_tipo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=ancho_widget)
-combo_tipo.grid(row=2, column=4, padx=5, pady=5, sticky="w")
+combo_tipo.grid(row=2, column=4, padx=5, pady=3, sticky="w")
+
+tk.Label(frame_formulario, text="Referencia:").grid(row=3, column=3, padx=5, pady=3, sticky="e")
+var_referencia = tk.StringVar()
+def to_uppercase(*args):
+    var_referencia.set(var_referencia.get().upper())
+var_referencia.trace_add("write", to_uppercase)
+entry_referencia = tk.Entry(frame_formulario, width=33, justify="center", textvariable=var_referencia)
+entry_referencia.grid(row=3, column=4, padx=5, pady=3, sticky="w")
 
 # Combobox cargando las opciones de nequis.json
-tk.Label(frame_formulario, text="Cuenta:").grid(row=3, column=3, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Cuenta:").grid(row=4, column=3, padx=5, pady=3, sticky="e")
 combo_nequi = ttk.Combobox(frame_formulario, values=nequi_opciones, state="disabled", width=ancho_widget)
-combo_nequi.grid(row=3, column=4, padx=5, pady=5, sticky="w")
+combo_nequi.grid(row=4, column=4, padx=5, pady=3, sticky="w")
 
 def llenar_nequi_por_placa():
     placa = entry_placa.get().strip()
@@ -319,17 +292,15 @@ def actualizar_todo(*args):
 # Asociar el cambio en el combo "Tipo" a la función
 combo_tipo.bind("<<ComboboxSelected>>", actualizar_todo)
 
-tk.Label(frame_formulario, text="Verificada:").grid(row=4, column=3, padx=5, pady=5, sticky="e")
+tk.Label(frame_formulario, text="Verificada:").grid(row=5, column=3, padx=5, pady=3, sticky="e")
 verificada_opciones = ["", "Si", "No"]
 combo_verificada = ttk.Combobox(frame_formulario, values=verificada_opciones, state="readonly", width=ancho_widget)
-combo_verificada.grid(row=4, column=4, padx=5, pady=5, sticky="w")
+combo_verificada.grid(row=5, column=4, padx=5, pady=3, sticky="w")
 combo_verificada.set("No")  # Establecer "No" como valor por defecto
-tk.Label(frame_formulario, text="Deuda Taller:", fg="#4682B4", font=("Helvetica", 10, "bold")).grid(row=5, column=3, padx=5, pady=5, sticky="e")
-entry_deuda = tk.Entry(frame_formulario, width=30, justify="center", state="readonly")
-entry_deuda.grid(row=5, column=4, padx=5, pady=5, sticky="w")
 
 
-# Frame para los botones
+
+
 # Función para cargar imágenes con tamaño uniforme
 imagenes = {}
 def cargar_imagen(nombre):
@@ -341,6 +312,7 @@ def cargar_imagen(nombre):
 
 # Variable global para guardar los datos originales del Tree
 datos_tree_original = []
+
 def tomar_foto_tree(tree):
     global datos_tree_original
     datos_tree_original = []
@@ -354,14 +326,13 @@ frame_botones.grid_columnconfigure(0, weight=1)
 frame_botones.grid_columnconfigure(1, weight=1)
 frame_botones.grid_columnconfigure(2, weight=1)
 
-
-btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, entry_deuda))
+btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias))
 btn_agregar.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 
 btn_consultar = tk.Button(frame_botones, text=" Consultar", image=cargar_imagen("Buscar"), compound="left", width=ancho_widget, command=lambda: (cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada), tomar_foto_tree(tree)))
 btn_consultar.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, entry_deuda, tree))
+btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree))
 btn_limpiar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
 btn_cuentas = tk.Button(frame_botones, text=" Cuentas", image=cargar_imagen("Cuenta"), compound="left", width=ancho_widget, command=abrir_ventana_cuentas)
