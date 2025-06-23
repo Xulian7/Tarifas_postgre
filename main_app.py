@@ -19,6 +19,7 @@ DB_PORT = os.getenv("DB_PORT")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 datos_cargados = []  # Variable global para guardar los datos de tree
@@ -398,6 +399,23 @@ subframe_datos.columnconfigure(1, weight=1)  # Entry (para que se estire si hay 
 # Elementos nuevos dentro del sub-frame
 
 
+def verificar_conexion():
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+def actualizar_estado():
+    if verificar_conexion():
+        estado_label.config(text="🟢 En línea", fg="green")
+    else:
+        estado_label.config(text="🔴 Sin conexión", fg="red")
+    # Se ejecuta de nuevo en 10 segundos
+    ventana.after(10000, actualizar_estado)
+
+
 def filtrar_por_referencia(event):
     global datos_tree_original
 
@@ -427,6 +445,9 @@ label_codigo = tk.Label(subframe_datos, text="Filtrar Ref:", bg="#f0f0f0", font=
 label_codigo.grid(row=0, column=0, sticky="e", padx=(0, 5))
 entry_codigo = tk.Entry(subframe_datos, width=30)
 entry_codigo.grid(row=0, column=1, sticky="we")
+# Puedes ubicar esto donde quieras en tu layout
+estado_label = tk.Label(subframe_datos, text="Verificando conexión...", font=("Segoe UI", 10, "bold"))
+estado_label.grid(row=0, column=2 ,pady=10)
 entry_codigo.bind("<Return>", filtrar_por_referencia)
 
 def sort_treeview(column, reverse):
@@ -516,7 +537,8 @@ def on_double_click(event, tree):
 
 # Asociar el evento al Treeview
 tree.bind("<Double-1>", lambda event: on_double_click(event, tree))
-
+# Lanza verificación inicial
+actualizar_estado()
 ventana.mainloop()
 
 
