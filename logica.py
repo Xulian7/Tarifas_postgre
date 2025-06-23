@@ -68,7 +68,7 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
         # Armar query
         query = """
             SELECT r.id, r.Fecha_sistema, r.Fecha_registro, r.Cedula, r.Nombre, 
-                   r.Placa, r.Valor, r.Saldos, r.Tipo, r.Nombre_cuenta, 
+                   r.Placa, r.Valor, r.Saldos, r.Motivo, r.Tipo, r.Nombre_cuenta, 
                    r.Referencia, r.Verificada
             FROM registros r
             LEFT JOIN propietario p ON r.Placa = p.Placa
@@ -262,8 +262,8 @@ def mostrar_msgbox_exito(entry_cedula, limpiar_funcion):
                             command=lambda: [limpiar_funcion(), ventana.destroy()])
     btn_aceptar.pack(side="right", padx=10)
 
-def limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha,
-combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, entry_deuda, tree):
+def limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha,
+combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
     # Limpiar campos de texto (Entry)
     entry_cedula.focus_set()
     entry_cedula.delete(0, tk.END)
@@ -273,7 +273,8 @@ combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, entry_deuda, tre
     entry_saldos.delete(0, tk.END)
     entry_referencia.delete(0, tk.END)
     entry_fecha.delete(0, tk.END)
-    entry_deuda.delete(0, tk.END)
+    combo_motivo.set('N-a')  # Resetear el ComboBox de Motivo
+    
     
     # Limpiar los Combobox
     combo_tipo.set('')  # Resetear el ComboBox de Tipo

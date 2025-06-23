@@ -187,6 +187,8 @@ tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3,
 tipos_opciones = ["N-a", "otras deudas", "multa"]
 combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=27)
 combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
+combo_motivo.set("N-a")
+
 
 # Crea el frame para las sugerencias
 frame_sugerencias = tk.Frame(frame_formulario, width=150, height=100)  # Ajusta según necesidad
@@ -332,7 +334,7 @@ btn_agregar.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 btn_consultar = tk.Button(frame_botones, text=" Consultar", image=cargar_imagen("Buscar"), compound="left", width=ancho_widget, command=lambda: (cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada), tomar_foto_tree(tree)))
 btn_consultar.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree))
+btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree))
 btn_limpiar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
 btn_cuentas = tk.Button(frame_botones, text=" Cuentas", image=cargar_imagen("Cuenta"), compound="left", width=ancho_widget, command=abrir_ventana_cuentas)
@@ -418,7 +420,7 @@ def filtrar_por_referencia(event):
     else:
         # Insertar solo las filas donde la columna Referencia (columna 10) coincida
         for row in datos_tree_original:
-            if filtro in str(row[10]).lower():
+            if filtro in str(row[11]).lower():
                 tree.insert("", "end", values=row)
 
 label_codigo = tk.Label(subframe_datos, text="Filtrar Ref:", bg="#f0f0f0", font=("Arial", 10))
@@ -448,7 +450,7 @@ scroll_x = ttk.Scrollbar(tree_frame, orient="horizontal")
 # Treeview con sus columnas
 tree = ttk.Treeview(tree_frame, 
                     columns=("id", "Fecha_sistema", "Fecha_registro", "Cedula", "Nombre", 
-                            "Placa", "Valor", "Saldos", "Tipo", "Nombre_cuenta", "Referencia", "Verificada"), 
+                            "Placa", "Valor", "Otros abonos", "Motivo abono", "Tipo", "Nombre_cuenta", "Referencia", "Verificada"), 
                     show="headings", 
                     yscrollcommand=scroll_y.set,
                     xscrollcommand=scroll_x.set)
@@ -456,18 +458,13 @@ tree = ttk.Treeview(tree_frame,
 # Configurar las scrollbars
 scroll_y.config(command=tree.yview)
 scroll_x.config(command=tree.xview)
-
 # Posicionar los elementos en el grid
 tree.grid(row=0, column=0, sticky="nsew")
 scroll_y.grid(row=0, column=1, sticky="ns")
 scroll_x.grid(row=1, column=0, sticky="ew")
-
 # Permitir que el Treeview se expanda en su contenedor
 tree_frame.grid_rowconfigure(0, weight=1)
 tree_frame.grid_columnconfigure(0, weight=1)
-
-
-
 # Configurar encabezados y alineación de columnas
 for col in tree["columns"]:
     tree.heading(col, text=col, command=lambda c=col: sort_treeview(c, False))
@@ -494,7 +491,7 @@ def on_double_click(event, tree):
 
     # Extraer los valores
     id_registro = item_values[0]  # ID está en la primera columna
-    verificada = item_values[11]  # 'Verificada' está en la última columna
+    verificada = item_values[12]  # 'Verificada' está en la última columna
 
     # Verificar si el estado es "NO"
     if verificada.upper() == "NO":
