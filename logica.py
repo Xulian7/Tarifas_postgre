@@ -61,7 +61,6 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
         if fecha:
             fecha = datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%d")
 
-        # Conectar a PostgreSQL en Railway
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -131,9 +130,9 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo cargar los datos desde PostgreSQL: {e}")
 
-def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos,
+def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
                      entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
-                     listbox_sugerencias, entry_deuda):
+                     listbox_sugerencias):
     
     # Obtener valores
     cedula = entry_cedula.get().strip()
@@ -147,6 +146,7 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
     tipo = combo_tipo.get().strip()
     nequi = combo_nequi.get().strip()
     verificada = "No"  # 🔒 Valor fijo
+    motivo = combo_motivo.get().strip()
 
     # Validación
     campos_faltantes = []
@@ -219,18 +219,18 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
         if confirmar:
             cursor.execute("""
                 INSERT INTO registros (
-                    Fecha_sistema, Fecha_registro, Cedula, Nombre, Placa, Valor, Saldos, Tipo, Nombre_cuenta, Referencia, Verificada
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    Fecha_sistema, Fecha_registro, Cedula, Nombre, Placa, Valor, Saldos, Motivo, Tipo, Nombre_cuenta, Referencia, Verificada
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s)
             """, (
-                fecha_hoy_bd, fecha_bd, cedula, nombre, placa, valor, saldos,
+                fecha_hoy_bd, fecha_bd, cedula, nombre, placa, valor, saldos, motivo,
                 tipo, nequi, referencia, verificada
             ))
             conn.commit()
 
             mostrar_msgbox_exito(entry_cedula, lambda: limpiar_formulario(
-                entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos,
+                entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
                 entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
-                listbox_sugerencias, entry_deuda, tree
+                listbox_sugerencias, tree
             ))
         else:
             messagebox.showinfo("Cancelado", "La operación fue cancelada.")
@@ -308,9 +308,9 @@ def cargar_nequi_opciones():
         return []
 
 def convertir_fecha(fecha_str):
-    """Convierte una fecha de formato dd-mm-yyyy a yyyy-mm-dd."""
+    """Convierte una fecha en formato dd-mm-yyyy a un objeto date."""
     try:
-        return datetime.strptime(fecha_str, "%d-%m-%Y").strftime("%Y-%m-%d")
+        return datetime.strptime(fecha_str, "%d-%m-%Y").date()
     except ValueError:
         messagebox.showerror("Error", "Formato de fecha incorrecto. Use dd-mm-yyyy.")
         return None
@@ -1684,6 +1684,15 @@ def ventana_propietario():
     cargar_propietarios()
 
 def join_and_export():
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+    import os
+    import pandas as pd
+    import psycopg2
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     # Selección de carpeta
     root = tk.Tk()
     root.withdraw()
@@ -1699,7 +1708,16 @@ def join_and_export():
         conn = get_connection()
 
         query = """
-        SELECT r.*, p.*
+        SELECT 
+            r.id AS registro_id,
+            r.fecha,
+            r.placa,
+            r.valor,
+            -- agrega más columnas de registros según sea necesario
+            p.cedula,
+            p.nombre,
+            p.direccion
+            -- agrega más columnas de propietario según sea necesario
         FROM registros r
         LEFT JOIN propietario p ON r.placa = p.placa
         """
@@ -1860,7 +1878,7 @@ def ui_atrasos(entry_nombre, entry_placa, entry_cedula):
 
     def calcular_cumplimiento_pago(pagos_cliente, valor_cuota, fecha_inicio, fecha_actual=None, dias_maximos=15):
         if fecha_actual is None:
-            fecha_actual = datetime.now()
+            fecha_actual = datetime.now().date()
 
         if pagos_cliente['Fecha_sistema'].dtype == 'O':
             pagos_cliente.loc[:, 'Fecha_sistema'] = pd.to_datetime(pagos_cliente['Fecha_sistema'])
@@ -1888,7 +1906,7 @@ def ui_atrasos(entry_nombre, entry_placa, entry_cedula):
         conn = sqlite3.connect("diccionarios/base_dat.db")
         cursor = conn.cursor()
 
-        fecha_actual = datetime.now()
+        fecha_actual = datetime.now().date()
         atraso_por_placa = []
 
         for _, cliente in clientes.iterrows():
@@ -2215,7 +2233,6 @@ def ui_atrasos(entry_nombre, entry_placa, entry_cedula):
     
     entry_filtro.bind("<KeyRelease>", filtrar_treeview)  # Filtrar al escribir
 
-
 def calcular_atraso_simple():
     conn = get_connection()
     clientes = pd.read_sql("SELECT * FROM clientes", conn)
@@ -2225,7 +2242,7 @@ def calcular_atraso_simple():
     clientes = clientes[~clientes['Placa'].str.contains(r'\*', regex=True)]
     df = clientes[['Placa', 'Cedula', 'Nombre', 'Fecha_inicio', 'Valor_cuota']].copy()
 
-    hoy = datetime.now()
+    hoy = datetime.now().date()
     df['Fecha_inicio'] = pd.to_datetime(df['Fecha_inicio'])
     df['dias_transcurridos'] = (hoy - df['Fecha_inicio']).dt.days + 1
 
@@ -2268,7 +2285,6 @@ def mostrar_atrasos_en_tree():
         tree.insert('', 'end', values=list(fila))
 
     ventana.mainloop()
-
 
 def gestionar_blacklist():
     conn = sqlite3.connect(DB_PATH)
@@ -2707,7 +2723,7 @@ def guardar_nombres_columnas(columnas):
 
 def generar_fechas():
     fecha_inicio = datetime(2025, 5, 1)
-    fecha_actual = datetime.now()
+    fecha_actual = datetime.now().date()
     delta = fecha_actual - fecha_inicio
     fechas = [(fecha_inicio + timedelta(days=i)).strftime("%d-%m-%Y") for i in range(delta.days + 1)]
     return fechas

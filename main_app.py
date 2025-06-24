@@ -204,7 +204,7 @@ frame_sugerencias.grid_columnconfigure(0, weight=1)  # Hace que el Listbox se ex
 listbox_sugerencias.bind("<<ListboxSelect>>", seleccionar_sugerencia)
 # Actualizar las sugerencias
 
-fecha_actual = datetime.now().strftime('%d-%m-%Y')
+fecha_actual = datetime.now().date().strftime('%d-%m-%Y')
 tk.Label(frame_formulario, text="Fecha_sistema:").grid(row=0, column=3, padx=5, pady=3, sticky="e")
 entry_hoy = tk.Entry(frame_formulario, width=28, justify="center", font=("Helvetica", 10, "bold"))
 entry_hoy.insert(0, fecha_actual) 
@@ -329,7 +329,7 @@ frame_botones.grid_columnconfigure(0, weight=1)
 frame_botones.grid_columnconfigure(1, weight=1)
 frame_botones.grid_columnconfigure(2, weight=1)
 
-btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias))
+btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias))
 btn_agregar.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 
 btn_consultar = tk.Button(frame_botones, text=" Consultar", image=cargar_imagen("Buscar"), compound="left", width=ancho_widget, command=lambda: (cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada), tomar_foto_tree(tree)))
@@ -528,7 +528,7 @@ def on_double_click(event, tree):
 
                 # Actualizar el Treeview
                 new_values = list(item_values)
-                new_values[11] = "Si"  # Cambiar el estado en la visualización
+                new_values[12] = "Si"  # Cambiar el estado en la visualización
                 tree.item(selected_item, values=new_values)
 
                 messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
