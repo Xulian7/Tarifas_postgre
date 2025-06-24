@@ -19,6 +19,8 @@ from openpyxl import Workbook
 import ctypes
 from tkinter import Toplevel
 import psycopg2
+from sqlalchemy import create_engine
+
 
 # Configuración de rutas
 BLACKLIST_PATH = "diccionarios/black_list.json"
@@ -36,6 +38,7 @@ DB_NAME = os.getenv("DB_NAME")
 # Establecer configuraciones locales - español
 locale.setlocale(locale.LC_ALL, 'es_CO.utf8')
 ventana_clientes = None  # Variable global dentro del módulo
+ventana_atrasos = None  # Variable global para evitar duplicados
 
 def get_connection():
     return psycopg2.connect(
@@ -45,6 +48,16 @@ def get_connection():
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT")
     )
+    
+def get_engine():
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
+    port = os.getenv("DB_PORT")
+    dbname = os.getenv("DB_NAME")
+
+    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{dbname}"
+    return create_engine(url)
 
 def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada):
     try:
@@ -1860,462 +1873,152 @@ def mostrar_consulta_registros():
 
     ventana.mainloop()
 
-def ui_atrasos(entry_nombre, entry_placa, entry_cedula):
-
-    def cargar_datos():
-        try:
-            conn = get_connection()
+def reporte_atrasos():
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
             registros = pd.read_sql("SELECT * FROM registros", conn)
             clientes = pd.read_sql("SELECT * FROM clientes", conn)
-            return registros, clientes
-        except Exception as e:
-            print(f"Error al cargar datos: {e}")
-            return pd.DataFrame(), pd.DataFrame()
-        finally:
-            conn.close()
-
-    # Calcular el riesgo de deuda
-
-    def calcular_cumplimiento_pago(pagos_cliente, valor_cuota, fecha_inicio, fecha_actual=None, dias_maximos=15):
-        if fecha_actual is None:
-            fecha_actual = datetime.now().date()
-
-        if pagos_cliente['Fecha_sistema'].dtype == 'O':
-            pagos_cliente.loc[:, 'Fecha_sistema'] = pd.to_datetime(pagos_cliente['Fecha_sistema'])
-
-        # Limitar la fecha_inicio a máximo 10 días antes de la fecha_actual
-        fecha_limite = fecha_actual - timedelta(days=dias_maximos - 1)
-        fecha_desde = max(fecha_inicio, fecha_limite)
-
-        pagos_filtrados = pagos_cliente[
-            (pagos_cliente['Fecha_sistema'] >= fecha_desde) &
-            (pagos_cliente['Fecha_sistema'] <= fecha_actual)
-        ]
-
-        dias_a_evaluar = (fecha_actual.date() - fecha_desde.date()).days + 1  # +1 para incluir hoy
-
-        total_pagado = pagos_filtrados['Valor'].sum()
-        #total_esperado = valor_cuota * dias_a_evaluar
-
-        dias_cumplimiento = round((total_pagado / valor_cuota), 1)
-        #print(f"Total Pagado: {total_pagado}, Dias:{dias_a_evaluar}, Cobertura: {dias_cumplimiento}")
-        return dias_cumplimiento
-
-    def calcular_atraso(registros, clientes):
-        # Conexión a la base de datos SQLite
-        conn = sqlite3.connect("diccionarios/base_dat.db")
-        cursor = conn.cursor()
+            
+        # Normalizar nombres de columnas a minúsculas
+        registros.columns = registros.columns.str.lower()
+        clientes.columns = clientes.columns.str.lower()
 
         fecha_actual = datetime.now().date()
-        atraso_por_placa = []
+        resultados = []
 
         for _, cliente in clientes.iterrows():
-            cedula = cliente['Cedula']
-            nombre = cliente['Nombre']
-            plazo = int(cliente['Fecha_final'])
-            fecha_inicio = datetime.strptime(cliente['Fecha_inicio'], '%Y-%m-%d')
-            valor_cuota = cliente['Valor_cuota']
-            dias_transcurridos = (fecha_actual - fecha_inicio).days + 1
-            dias_transcurridos = min(dias_transcurridos, plazo)
-            monto_adeudado = dias_transcurridos * valor_cuota
-            pagos_cliente = registros[registros['Cedula'] == cedula]
+            placa = cliente.get('placa', '')
+            if '*' in str(placa):
+                continue
 
-            if not pagos_cliente.empty:
-                total_pagado = pagos_cliente['Valor'].sum()
-                dias_cubiertos = total_pagado / valor_cuota if valor_cuota > 0 else 0
-                dias_atraso = dias_transcurridos - dias_cubiertos
-                atraso = monto_adeudado - total_pagado
-            else:
-                total_pagado = 0
-                dias_cubiertos = 0
-                dias_atraso = dias_transcurridos
-                atraso = monto_adeudado
+            cedula = cliente['cedula']
+            nombre = cliente['nombre']
+            fecha_inicio = pd.to_datetime(cliente['fecha_inicio']).date()
+            fecha_final = int(cliente['fecha_final'])
+            valor_cuota = cliente['valor_cuota']
 
-            pagos_por_dia = []
-            pagos_ultimos_10_dias = []
+            dias_transcurridos = min((fecha_actual - fecha_inicio).days + 1, fecha_final)
+            monto_esperado = dias_transcurridos * valor_cuota
+
+            pagos_cliente = registros[registros['cedula'] == cedula].copy()
+            if pagos_cliente['fecha_sistema'].dtype == 'O':
+                pagos_cliente['fecha_sistema'] = pd.to_datetime(pagos_cliente['fecha_sistema']).dt.date
+
+            total_pagado = pagos_cliente['valor'].sum()
+            atraso_valor = monto_esperado - total_pagado
+            dias_cubiertos = total_pagado / valor_cuota if valor_cuota else 0
+            dias_atraso = dias_transcurridos - dias_cubiertos
+
+            pagos_dias = []
             for i in range(10):
                 fecha_consulta = fecha_actual - timedelta(days=i)
-                pagos_en_fecha = pagos_cliente[pagos_cliente['Fecha_sistema'] == fecha_consulta.strftime('%Y-%m-%d')]
-                pago_dia = pagos_en_fecha['Valor'].sum()/1000
-                pagos_ultimos_10_dias.append(pago_dia)
-                
-            
-            placa = cliente['Placa']
-            # --- Cálculo de Inicial_P ---
-            # Paso 1: obtener Otras_deudas
-            cursor.execute("SELECT Otras_deudas FROM clientes WHERE Placa = ? AND Nombre = ?", (placa, nombre))
-            resultado = cursor.fetchone()
-            otras_deudas = resultado[0] if resultado and resultado[0] is not None else 0
-            # Paso 2: sumar saldos en registros
-            cursor.execute("SELECT SUM(saldos) FROM registros WHERE Placa = ? AND Nombre = ?", (placa, nombre))
-            resultado = cursor.fetchone()
-            suma_saldos = resultado[0] if resultado and resultado[0] is not None else 0
+                pagos_en_fecha = pagos_cliente[pagos_cliente['fecha_sistema'] == fecha_consulta]
+                pagos_dias.append(pagos_en_fecha['valor'].sum() / 1000)
 
-            try:
-                otras_deudas = float(otras_deudas)
-            except (ValueError, TypeError):
-                otras_deudas = 0.0
+            resultados.append({
+                "Placa": placa,
+                "Nombre": nombre,
+                "Días Transcurridos": dias_transcurridos,
+                "Días de Atraso": round(dias_atraso, 1),
+                "Monto Adeudado": round(atraso_valor, 0),
+                **{f"Día {i+1}": round(p, 1) for i, p in enumerate(pagos_dias)}  # Día 1 = hoy
+            })
 
-            
-            inicial_p = round(otras_deudas - suma_saldos, 0)
-            # --- Append con Inicial_P al final ---
-            cob10 = calcular_cumplimiento_pago(pagos_cliente, valor_cuota, fecha_inicio, fecha_actual)
+        df = pd.DataFrame(resultados)
 
-            atraso_por_placa.append((
-                placa, nombre, dias_transcurridos, cob10, round(dias_atraso, 1),
-                round(atraso, 0), *pagos_ultimos_10_dias 
-            ))
+        # Ordenar por "Días de Atraso" descendente
+        if not df.empty:
+            df = df.sort_values(by="Días de Atraso", ascending=False)
 
-        conn.close()
-        atraso_por_placa.sort(key=lambda x: x[4], reverse=True)  # Ordenar por Cob10 (4ta columna)
-        return atraso_por_placa
+        return df
 
-    def copiar_al_portapapeles(event):
-        selected_item = tree.selection()  # Obtener el elemento seleccionado
-        if selected_item:
-            valor = tree.item(selected_item, "values")[0]  # Primera columna
-            name = tree.item(selected_item, "values")[1]
-            antiguedad = float(tree.item(selected_item, "values")[2])
-            rec15 = float(tree.item(selected_item, "values")[3])
-            atraso = float(tree.item(selected_item, "values")[4])
-            primer_nombre = name.split()[0]
-
-            tope_permitido = antiguedad / 30 * 1.5
-
-            if atraso <= 2:
-                mensaje_atraso = "Gracias por estar al día con sus pagos."
-            elif atraso > 5 and atraso > tope_permitido:
-                mensaje_atraso = (
-                    f"Actualmente registra {atraso} días de atraso en los pagos. "
-                    f"Este valor supera el límite tolerado según la antigüedad del contrato ({tope_permitido:.1f} días permitidos)."
-                )
-            else:
-                mensaje_atraso = f"Actualmente registra {atraso} días de atraso en los pagos."
-
-            if rec15 >= 10:
-                mensaje_recargas = "Se recomienda mantener la frecuencia actual de abonos."
-            elif 8 <= rec15 < 10:
-                mensaje_recargas = "Se solicita regularizar la frecuencia de los pagos diarios."
-            else:
-                if atraso > 7:
-                    mensaje_recargas = (
-                        "Debido a la baja frecuencia de pagos recientes y un atraso superior a 7 días, "
-                        "el caso podría ser asignado al equipo de cobros para seguimiento presencial sin previo aviso."
-                    )
-                else:
-                    mensaje_recargas = "Se recomienda normalizar la frecuencia de los pagos diarios."
+    except Exception as e:
+        print(f"Error en reporte_atrasos: {e}")
+        return pd.DataFrame()
 
 
-            mensaje_personalizado = (
-                f"{primer_nombre},\n"
-                f"{mensaje_atraso}\n"
-                f"En los últimos 15 días se han registrado {rec15} abonos.\n"
-                f"{mensaje_recargas}"
-            )
 
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("SELECT Cedula FROM clientes WHERE Nombre = ?", (name,))
-            resultado = cursor.fetchone()
-            conn.close()
-            cedula = resultado[0] if resultado else None
+def crear_interfaz_atrasos(root_padre):
+    global ventana_atrasos
 
-            # Copiar valor_modificado inmediatamente
-            if len(valor) == 6:
-                valor_modificado = valor[:3] + '-' + valor[3:]
-                root.clipboard_clear()
-                root.clipboard_append(valor_modificado)
-                root.update()
+    # Si ya está abierta, la llevamos al frente
+    if ventana_atrasos and ventana_atrasos.winfo_exists():
+        ventana_atrasos.lift()
+        return
 
-                # Definir función para copiar mensaje_personalizado
-                def copiar_mensaje(event=None):
-                    root.clipboard_clear()
-                    root.clipboard_append(mensaje_personalizado)
-                    root.update()
+    df = reporte_atrasos()
+    if df.empty:
+        print("No hay datos para mostrar.")
+        return
 
-                # Vincular click derecho en la ventana raíz o en un widget específico
-                root.bind('<Button-3>', copiar_mensaje)
+    df["Monto Adeudado"] = df["Monto Adeudado"].apply(lambda x: f"${x:,.0f}")
+    columnas = list(df.columns)
 
-            entry_nombre.delete(0, tk.END)
-            entry_nombre.insert(0, name)
-            entry_placa.delete(0, tk.END)
-            entry_placa.insert(0, valor)
-            entry_cedula.delete(0, tk.END)
-            entry_cedula.insert(0, cedula)
+    # Nueva ventana secundaria
+    ventana_atrasos = tk.Toplevel(root_padre)
+    ventana_atrasos.title("Reporte de Atrasos")
+    ventana_atrasos.geometry("1200x600")
 
-    # Crear la interfaz gráfica para mostrar los datos
+    # Centrar en pantalla
+    ventana_atrasos.update_idletasks()
+    x = (ventana_atrasos.winfo_screenwidth() // 2) - (1200 // 2)
+    y = (ventana_atrasos.winfo_screenheight() // 2) - (600 // 2)
+    ventana_atrasos.geometry(f"+{x}+{y}")
 
-    registros, clientes = cargar_datos()
-    atraso_por_placa = calcular_atraso(registros, clientes)
+    # Entrada filtro
+    entry_filtro = tk.Entry(ventana_atrasos, font=("Arial", 12))
+    entry_filtro.pack(fill="x", padx=10, pady=5)
 
-    # Crear la ventana principal
-    root = tk.Toplevel()
-    # Obtener alto de la pantalla
-    alto_pantalla = root.winfo_screenheight()
-    root.geometry(f"800x{alto_pantalla-100}")
-    root.title("Reporte de Atrasos de Pagos")
-    # Configurar el redimensionamiento de la ventana
-    # Configurar el grid para que se expanda correctamente
-    root.columnconfigure(0, weight=1)
-    root.columnconfigure(1, weight=1)
-    root.rowconfigure(0, weight=1)
-    root.rowconfigure(1, weight=0)
-    
+    # Treeview
+    tree = ttk.Treeview(ventana_atrasos, columns=columnas, show='headings')
+    for col in columnas:
+        tree.heading(col, text=col)
+        ancho = 80 if col.startswith("Día ") else 150
+        anchor = 'e' if col.startswith("Día ") else 'center'
+        tree.column(col, anchor=anchor, width=ancho)
 
-    tree = ttk.Treeview(root, columns=(
-    "Placa", "Nombre", "Antiguedad","Rec15", "Días de Atraso", "Valor Atraso", 
-    "Hoy", "Ayer", "Antier", "Día 4", "Día 5", "Día 6", "Día 7", "Día 8", "Día 9", "Día 10"
-    ), show="headings")
-    
-    # Configurar encabezados
-    encabezados = [
-        ("Placa", "Placa"),
-        ("Nombre", "Nombre"),
-        ("Antiguedad", "Antigüedad"),
-        ("Rec15", "Recaudo 15"),
-        ("Días de Atraso", "Días de Atraso"),
-        ("Valor Atraso", "Valor Atraso"),
-        ("Hoy", "Hoy"),
-        ("Ayer", "Ayer"),
-        ("Antier", "Antier"),
-        ("Día 4", "Día 4"),
-        ("Día 5", "Día 5"),
-        ("Día 6", "Día 6"),
-        ("Día 7", "Día 7"),
-        ("Día 8", "Día 8"),
-        ("Día 9", "Día 9"),
-        ("Día 10", "Día 10"),
-    ]
-
-    for col, text in encabezados:
-        tree.heading(col, text=text)
-        tree.column(col, anchor="center")
-    # Asociar evento de doble clic
-    tree.bind("<Double-1>", copiar_al_portapapeles)
-    # Cargar el archivo JSON
-    with open("diccionarios/black_list.json", "r", encoding="utf-8") as f:
-        blacklist_data = json.load(f)
-    # Crear un set con los nombres en lista negra
-    nombres_en_blacklist = {
-        valores["Nombre"] for valores in blacklist_data.values() if valores.get("Black_list") == "Si"
-    }
-
-    # Insertar los datos en la tabla
-    tree.tag_configure("en_rojo", background="lightcoral")
-    for atraso in atraso_por_placa:
-        if "**" in atraso[0]:
-            continue
-        monto_formateado = f"${atraso[5]:,.0f}"
-        pagos_formateados = [f"{int(pago):,}" for pago in atraso[6:16]]
-        nombre = atraso[1]
-        tags = ("en_rojo",) if nombre in nombres_en_blacklist else ()
-        tree.insert("", "end", values=(
-            atraso[0], atraso[1], atraso[2], atraso[3], atraso[4], monto_formateado, *pagos_formateados
-        ), tags=tags)
-
-    for col, text in encabezados:
-        tree.heading(col, text=text)
-        # Ajustar las columnas de pago a su contenido
-        ancho = 100 if "Pago Día" in col else 150
-        tree.column(col, anchor="center", width=ancho)
-        
-    # Insertar una fila en blanco
-    tree.insert("", "end", values=("", "", "", ""))
-    # Calcular el total de la columna "Valor Atraso"
-    total_atraso = sum(atraso[4] for atraso in atraso_por_placa if atraso[4] > 0 and "**" not in atraso[0])
-
-    # Formatear el total en COP
-    total_formateado = f"${int(total_atraso):,}"
-    # Insertar la fila "TOTAL" en negrita
-    tree.insert("", "end", values=("TOTAL", "", "", total_formateado), tags=("total",))
-    # Aplicar formato en negrita a la fila "TOTAL"
-    tree.tag_configure("total", font=("Arial", 10, "bold"))
-    # Colocar el Treeview en la ventana usando grid
-    # Scrollbar vertical
-    scrollbar_y = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
+    scrollbar_y = ttk.Scrollbar(ventana_atrasos, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar_y.set)
-    scrollbar_y.grid(row=0, column=2, sticky="ns")
-
-    
-    #tree.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-    tree.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
-    # Entry para filtrar
-    entry_filtro = tk.Entry(root, font=("Arial", 12))
-    entry_filtro.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-    
-    # Botón para exportar
-    btn_exportar = tk.Button(root, text="Exportar a Excel", command=lambda: export_tree_to_excel(tree))
-    btn_exportar.grid(row=2, column=0, sticky="ew", padx=0, pady=5)
-    btn_ruta = tk.Button(root, text="Reporte ruta", command=lambda: generar_tree_con_seleccion(tree))
-    btn_ruta.grid(row=2, column=1, sticky="ew", padx=0, pady=5)
-
-
-    def generar_tree_con_seleccion(tree_origen):
-        seleccion = tree_origen.selection()
-        if not seleccion:
-            print("No hay registros seleccionados.")
-            return
-
-        # Crear nueva ventana
-        nueva_ventana = tk.Toplevel()
-        nueva_ventana.title("Registros seleccionados")
-
-        # Crear nuevo Treeview
-        tree_destino = ttk.Treeview(nueva_ventana, columns=tree_origen['columns'], show='headings')
-        tree_destino.pack(fill="both", expand=True)
-
-        # Añadir scrollbar vertical (opcional pero útil)
-        scrollbar = ttk.Scrollbar(nueva_ventana, orient="vertical", command=tree_destino.yview)
-        tree_destino.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-
-        # Configurar columnas centradas
-        for col in tree_origen["columns"]:
-            tree_destino.heading(col, text=col)
-            tree_destino.column(col, anchor="center", stretch=True, width=tree_origen.column(col)["width"])
-
-        # Insertar solo los registros seleccionados
-        for item_id in seleccion:
-            valores = tree_origen.item(item_id, "values")
-            tree_destino.insert("", "end", values=valores)
-
-        return tree_destino
-
-    def obtener_datos_treeview():
-        """Obtiene los datos actuales del Treeview y los guarda como referencia."""
-        return [tree.item(child)["values"] for child in tree.get_children()]
-
-    # Guardar los datos originales del Treeview para restaurarlos al eliminar el filtro
-    datos_originales = obtener_datos_treeview()
-    
-    def export_tree_to_excel(tree):
-        # Obtener los encabezados del Treeview
-        columns = [tree.heading(col)["text"] for col in tree["columns"]]
-
-        # Obtener los datos del Treeview
-        data = []
-        for item in tree.get_children():
-            data.append(tree.item(item)["values"])
-
-        # Crear un DataFrame
-        df = pd.DataFrame(data, columns=columns)
-
-        # Guardar el archivo en una ubicación elegida por el usuario
-        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx",
-                                                filetypes=[("Excel files", "*.xlsx")],
-                                                title="Guardar como")
-        if file_path:
-            df.to_excel(file_path, index=False)
-            print(f"Exportado a: {file_path}")
-
-
-    def filtrar_treeview(*args):
-        """Filtra dinámicamente el Treeview según el texto en entry_filtro."""
-        filtro = entry_filtro.get().strip().lower()  # Convertir a minúsculas
-
-        # Limpiar el Treeview
-        for item in tree.get_children():
-            tree.delete(item)
-
-        # Si el filtro está vacío, restaurar todos los datos
-        if not filtro:
-            for fila in datos_originales:
-                tree.insert("", "end", values=fila)
-            return
-
-        # Índice de la columna a filtrar (AJUSTA según necesidad)
-        columna_filtrar = 1  # Cambia el índice según la columna deseada
-
-        # Filtrar y agregar solo las filas que coincidan en la columna específica
-        for fila in datos_originales:
-            if filtro in str(fila[columna_filtrar]).lower():  # Convertir a string y minúsculas
-                tree.insert("", "end", values=fila)
-    
-    entry_filtro.bind("<KeyRelease>", filtrar_treeview)  # Filtrar al escribir
-
-def calcular_atraso_simple():
-    conn = get_connection()
-    clientes = pd.read_sql("SELECT * FROM clientes", conn)
-    registros = pd.read_sql("SELECT * FROM registros", conn)
-    conn.close()
-
-    clientes = clientes[~clientes['Placa'].str.contains(r'\*', regex=True)]
-    df = clientes[['Placa', 'Cedula', 'Nombre', 'Fecha_inicio', 'Valor_cuota']].copy()
-
-    hoy = datetime.now().date()
-    df['Fecha_inicio'] = pd.to_datetime(df['Fecha_inicio'])
-    df['dias_transcurridos'] = (hoy - df['Fecha_inicio']).dt.days + 1
-
-    dias_atraso = []
-    for _, fila in df.iterrows():
-        cedula = fila['Cedula']
-        placa = fila['Placa']
-        valor_cuota = fila['Valor_cuota']
-
-        pagos = registros[(registros['Cedula'] == cedula) & (registros['Placa'] == placa)]
-        total_pagado = pagos['Valor'].sum()
-        cuotas_pagas = total_pagado / valor_cuota if valor_cuota > 0 else 0
-        atraso = fila['dias_transcurridos'] - cuotas_pagas
-        dias_atraso.append(round(atraso, 1))
-
-    df['dias_atraso'] = dias_atraso
-    return df[['Placa', 'Cedula', 'Nombre', 'dias_atraso']].sort_values(by='dias_atraso', ascending=False)
-
-def mostrar_atrasos_en_tree():
-    df = calcular_atraso_simple()
-
-    ventana = tk.Toplevel()
-    ventana.title("Reporte de Atrasos")
-    ventana.geometry("600x400")
-
-    frame = tk.Frame(ventana)
-    frame.pack(fill="both", expand=True)
-
-    tree = ttk.Treeview(frame, columns=list(df.columns), show='headings')
-    vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=vsb.set)
-    vsb.pack(side="right", fill="y")
+    scrollbar_y.pack(side="right", fill="y")
     tree.pack(fill="both", expand=True)
 
-    for col in df.columns:
-        tree.heading(col, text=col)
-        tree.column(col, anchor="center")
+    # Backup para filtrar
+    df_original = df.copy()
 
-    for _, fila in df.iterrows():
-        tree.insert('', 'end', values=list(fila))
+    def cargar_tree(df_view):
+        tree.delete(*tree.get_children())
+        for _, fila in df_view.iterrows():
+            tree.insert("", "end", values=list(fila))
 
-    ventana.mainloop()
+    def aplicar_filtro(event=None):
+        filtro = entry_filtro.get().lower().strip()
+        if not filtro:
+            cargar_tree(df_original)
+            return
+        filtrado = df_original[
+            df_original["Nombre"].str.lower().str.contains(filtro) |
+            df_original["Placa"].str.lower().str.contains(filtro)
+        ]
+        cargar_tree(filtrado)
 
-def gestionar_blacklist():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT Nombre, Placa FROM clientes")
-    clientes = cursor.fetchall()
-    conn.close()
+    cargar_tree(df_original)
+    entry_filtro.bind("<KeyRelease>", aplicar_filtro)
 
-    if os.path.exists(BLACKLIST_PATH):
-        try:
-            with open(BLACKLIST_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except json.JSONDecodeError:
-            data = {}
-    else:
-        data = {}
+    # Botón exportar
+    def exportar_excel():
+        ruta = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
+        if ruta:
+            df_original.to_excel(ruta, index=False)
+            print(f"Exportado a {ruta}")
 
-    for nombre, placa in clientes:
-        clave = f"{nombre}-{placa}"
-        if clave not in data:
-            data[clave] = {
-                "Nombre": nombre,
-                "Placa": placa,
-                "Black_list": "No",
-                "Observaciones": ""
-            }
+    btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
+    btn_exportar.pack(pady=5)
 
-    with open(BLACKLIST_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
 
-    crear_ventana_blacklist(data)
+
+
+
 
 def crear_ventana_blacklist(data):
     ventana = tk.Toplevel()

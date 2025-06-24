@@ -1,0 +1,41 @@
+# ⚙️ Python bytecode y cachés
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# 🧪 Entornos virtuales
+env/
+venv/
+.venv/
+ENV/
+
+# 🏗️ Archivos de construcción
+build/
+dist/
+*.egg-info/
+*.spec
+
+# 🧠 Archivos Jupyter
+.ipynb_checkpoints/
+
+# 🧠 Archivos personales de VS Code
+.vscode/
+
+# 💻 Basura del sistema operativo
+.DS_Store
+Thumbs.db
+
+# 🔐 Archivos sensibles
+.env
+.env.*
+
+# 📝 Logs
+*.log
+
+# ⚠️ Excluir backups o temporales
+*~
+*.bak
+*.swp
+*.tmp

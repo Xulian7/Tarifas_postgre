@@ -356,17 +356,17 @@ btn_propietario.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=mostrar_consulta_registros)
 btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
 
-btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=calcular_atraso_simple)
+btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(root_padre=ventana))
 btn_mora.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 
-btn_blacklist = tk.Button(frame_botones, text=" Lista negra", image=cargar_imagen("blacklist"), compound="left", width=ancho_widget, command=gestionar_blacklist)
-btn_blacklist.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+#btn_blacklist = tk.Button(frame_botones, text=" Lista negra", image=cargar_imagen("blacklist"), compound="left", width=ancho_widget, command=gestionar_blacklist)
+#btn_blacklist.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
-btn_garage.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
+btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
 btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=abrir_gestion_deudas)
-btn_deudas.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
+btn_deudas.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
 
 # Frame de información (derecha)
 frame_derecho = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
@@ -445,9 +445,10 @@ label_codigo = tk.Label(subframe_datos, text="Filtrar Ref:", bg="#f0f0f0", font=
 label_codigo.grid(row=0, column=0, sticky="e", padx=(0, 5))
 entry_codigo = tk.Entry(subframe_datos, width=30)
 entry_codigo.grid(row=0, column=1, sticky="we")
-# Puedes ubicar esto donde quieras en tu layout
+# Validar conexion con servidor
 estado_label = tk.Label(subframe_datos, text="Verificando conexión...", font=("Segoe UI", 10, "bold"))
-estado_label.grid(row=0, column=2 ,pady=10)
+estado_label.grid(row=0, column=2 ,padx=10, pady=10)
+
 entry_codigo.bind("<Return>", filtrar_por_referencia)
 
 def sort_treeview(column, reverse):
@@ -519,11 +520,12 @@ def on_double_click(event, tree):
         confirmar = messagebox.askyesno("Confirmación", "¿Desea marcar este registro como verificado?")
         if confirmar:
             try:
-                # Conectar a la base de datos y actualizar el estado
-                conn = sqlite3.connect("diccionarios/base_dat.db")
+                # Conectar a la base de datos PostgreSQL y actualizar el estado
+                conn = get_connection()
                 cursor = conn.cursor()
-                cursor.execute("UPDATE registros SET Verificada = 'Si' WHERE id = ?", (id_registro,))
+                cursor.execute("UPDATE registros SET Verificada = 'Si' WHERE id = %s", (id_registro,))
                 conn.commit()
+                cursor.close()
                 conn.close()
 
                 # Actualizar el Treeview
@@ -534,6 +536,7 @@ def on_double_click(event, tree):
                 messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo actualizar el registro: {e}")
+
 
 # Asociar el evento al Treeview
 tree.bind("<Double-1>", lambda event: on_double_click(event, tree))
