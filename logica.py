@@ -1879,8 +1879,7 @@ def reporte_atrasos():
         with engine.connect() as conn:
             registros = pd.read_sql("SELECT * FROM registros", conn)
             clientes = pd.read_sql("SELECT * FROM clientes", conn)
-            
-        # Normalizar nombres de columnas a minúsculas
+
         registros.columns = registros.columns.str.lower()
         clientes.columns = clientes.columns.str.lower()
 
@@ -1894,9 +1893,15 @@ def reporte_atrasos():
 
             cedula = cliente['cedula']
             nombre = cliente['nombre']
-            fecha_inicio = pd.to_datetime(cliente['fecha_inicio']).date()
-            fecha_final = int(cliente['fecha_final'])
-            valor_cuota = cliente['valor_cuota']
+            try:
+                fecha_inicio = pd.to_datetime(cliente['fecha_inicio']).date()
+                fecha_final = int(cliente['fecha_final'])
+                valor_cuota = float(cliente['valor_cuota'])
+            except (ValueError, TypeError):
+                continue
+
+            if valor_cuota <= 0:
+                continue
 
             dias_transcurridos = min((fecha_actual - fecha_inicio).days + 1, fecha_final)
             monto_esperado = dias_transcurridos * valor_cuota
@@ -1906,30 +1911,45 @@ def reporte_atrasos():
                 pagos_cliente['fecha_sistema'] = pd.to_datetime(pagos_cliente['fecha_sistema']).dt.date
 
             total_pagado = pagos_cliente['valor'].sum()
-            atraso_valor = monto_esperado - total_pagado
-            dias_cubiertos = total_pagado / valor_cuota if valor_cuota else 0
+            dias_cubiertos = round(total_pagado / valor_cuota, 1)
             dias_atraso = dias_transcurridos - dias_cubiertos
 
             pagos_dias = []
             for i in range(10):
                 fecha_consulta = fecha_actual - timedelta(days=i)
                 pagos_en_fecha = pagos_cliente[pagos_cliente['fecha_sistema'] == fecha_consulta]
-                pagos_dias.append(pagos_en_fecha['valor'].sum() / 1000)
+                pagos_dias.append(int(pagos_en_fecha['valor'].sum() / 1000))  # Valor entero
 
             resultados.append({
                 "Placa": placa,
                 "Nombre": nombre,
-                "Días Transcurridos": dias_transcurridos,
+                "Antigüedad": dias_transcurridos,
                 "Días de Atraso": round(dias_atraso, 1),
-                "Monto Adeudado": round(atraso_valor, 0),
-                **{f"Día {i+1}": round(p, 1) for i, p in enumerate(pagos_dias)}  # Día 1 = hoy
+                "Monto Adeudado": int(round(monto_esperado - total_pagado)),  # Entero sin decimales
+                **{f"Día {i+1}": p for i, p in enumerate(pagos_dias)}
             })
 
         df = pd.DataFrame(resultados)
 
-        # Ordenar por "Días de Atraso" descendente
         if not df.empty:
             df = df.sort_values(by="Días de Atraso", ascending=False)
+            df.insert(0, "#", range(1, len(df) + 1))  # Enumeración
+
+            # Fila vacía
+            fila_vacia = pd.Series([""] * len(df.columns), index=df.columns)
+            df.loc[len(df)] = fila_vacia
+            # Fila TOTAL
+            total_adeudado = (
+                pd.to_numeric(df["Monto Adeudado"].replace('', 0), errors='coerce')
+                .fillna(0)
+                .astype(int)
+                .sum()
+            )
+            fila_total = pd.Series([""] * len(df.columns), index=df.columns)
+            fila_total["Nombre"] = "TOTAL"
+            fila_total["Monto Adeudado"] = total_adeudado
+            fila_total["#"] = ""
+            df.loc[len(df)] = fila_total
 
         return df
 
@@ -1937,12 +1957,9 @@ def reporte_atrasos():
         print(f"Error en reporte_atrasos: {e}")
         return pd.DataFrame()
 
-
-
 def crear_interfaz_atrasos(root_padre):
     global ventana_atrasos
 
-    # Si ya está abierta, la llevamos al frente
     if ventana_atrasos and ventana_atrasos.winfo_exists():
         ventana_atrasos.lift()
         return
@@ -1952,44 +1969,137 @@ def crear_interfaz_atrasos(root_padre):
         print("No hay datos para mostrar.")
         return
 
-    df["Monto Adeudado"] = df["Monto Adeudado"].apply(lambda x: f"${x:,.0f}")
+    def formatear_monto(x):
+        try:
+            return locale.currency(float(x), grouping=True)
+        except:
+            return x  # Deja valores como '' o 'TOTAL' sin tocar
+
+    df["Monto Adeudado"] = df["Monto Adeudado"].apply(formatear_monto)
+
     columnas = list(df.columns)
 
-    # Nueva ventana secundaria
+    def copiar_placa_al_portapapeles(event):
+        selected_item = tree.focus()
+        if not selected_item:
+            return
+
+        valores = tree.item(selected_item, 'values')
+        if not valores:
+            return
+
+        placa = valores[columnas.index("Placa")]  # obtiene el valor de la columna "Placa"
+
+        if len(placa) == 6:
+            placa_modificada = placa[:3] + "-" + placa[3:]
+            root_padre.clipboard_clear()
+            root_padre.clipboard_append(placa_modificada)
+            root_padre.update()
+            print(f"Placa copiada al portapapeles: {placa_modificada}")
+
+    def copiar_mensaje_personalizado(event):
+        selected_item = tree.focus()
+        if not selected_item:
+            return
+
+        valores = tree.item(selected_item, 'values')
+        if not valores:
+            return
+
+        try:
+            nombre_completo = valores[columnas.index("Nombre")]
+            primer_nombre = nombre_completo.split()[0]
+            antiguedad = int(valores[columnas.index("Antigüedad")])
+            atraso = float(valores[columnas.index("Días de Atraso")])
+            monto = valores[columnas.index("Monto Adeudado")]
+
+            gabela = (antiguedad / 30) * 1.5
+
+            if antiguedad < 30:
+                if atraso >= 5:
+                    mensaje = (
+                        f"{primer_nombre}, actualmente presenta {atraso:.1f} días de atraso. "
+                        "Dado que el contrato es reciente, se ha programado una visita de seguimiento por parte del equipo de cobros."
+                    )
+                else:
+                    mensaje = (
+                        f"{primer_nombre}, lleva {atraso:.1f} días de atraso. "
+                        "Por favor, recuerde mantenerse al día con su plan de pago."
+                    )
+            elif atraso > gabela + 5:
+                mensaje = (
+                    f"{primer_nombre}, registra {atraso:.1f} días de atraso en los pagos. "
+                    f"Este valor supera el límite permitido según la antigüedad de su contrato ({gabela:.1f} días). "
+                    "Se ha programado una visita por parte del personal de cobradores."
+                )
+            elif atraso > gabela + 2:
+                mensaje = (
+                    f"{primer_nombre}, lleva {atraso:.1f} días de atraso. "
+                    f"Supera el límite tolerado de {gabela:.1f} días según su antigüedad. "
+                    "Lo invitamos a ponerse al día lo antes posible para evitar medidas adicionales."
+                )
+            else:
+                mensaje = (
+                    f"{primer_nombre}, tiene {atraso:.1f} días de atraso. "
+                    "Le recordamos la importancia de mantener los pagos al día. "
+                    f"El saldo actual pendiente es de {monto}."
+                )
+
+            root_padre.clipboard_clear()
+            root_padre.clipboard_append(mensaje)
+            root_padre.update()
+            print("Mensaje copiado al portapapeles.")
+        except Exception as e:
+            print(f"Error al generar mensaje: {e}")
+
     ventana_atrasos = tk.Toplevel(root_padre)
     ventana_atrasos.title("Reporte de Atrasos")
     ventana_atrasos.geometry("1200x600")
-
-    # Centrar en pantalla
     ventana_atrasos.update_idletasks()
     x = (ventana_atrasos.winfo_screenwidth() // 2) - (1200 // 2)
     y = (ventana_atrasos.winfo_screenheight() // 2) - (600 // 2)
     ventana_atrasos.geometry(f"+{x}+{y}")
 
-    # Entrada filtro
     entry_filtro = tk.Entry(ventana_atrasos, font=("Arial", 12))
     entry_filtro.pack(fill="x", padx=10, pady=5)
 
-    # Treeview
     tree = ttk.Treeview(ventana_atrasos, columns=columnas, show='headings')
+    
+    style = ttk.Style()
+    style.configure("Treeview", font=("Arial", 10))
+    style.configure("Treeview.Heading", font=("Arial", 10, "bold"))
+    tree.tag_configure('total', font=('Arial', 10, 'bold'))
+    style.configure("Treeview.Heading", font=("Arial", 10))  # Encabezado
+    tree = ttk.Treeview(ventana_atrasos, columns=columnas, show='headings')
+    tree.tag_configure('grave', background='pink')  # Resaltar filas con más de 10 días de atraso
+    tree.bind("<Double-1>", copiar_placa_al_portapapeles)
+    tree.bind("<Button-3>", copiar_mensaje_personalizado)
+
     for col in columnas:
-        tree.heading(col, text=col)
-        ancho = 80 if col.startswith("Día ") else 150
-        anchor = 'e' if col.startswith("Día ") else 'center'
-        tree.column(col, anchor=anchor, width=ancho)
+        tree.heading(col, text=col, anchor='center')  # también centramos el encabezado
+        tree.column(col, anchor='center', width=120)  # puedes ajustar el width si necesitas
+
 
     scrollbar_y = ttk.Scrollbar(ventana_atrasos, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar_y.set)
     scrollbar_y.pack(side="right", fill="y")
     tree.pack(fill="both", expand=True)
 
-    # Backup para filtrar
     df_original = df.copy()
 
     def cargar_tree(df_view):
         tree.delete(*tree.get_children())
         for _, fila in df_view.iterrows():
-            tree.insert("", "end", values=list(fila))
+            valores = list(fila)
+
+            if str(fila["Nombre"]).strip().upper() == "TOTAL":
+                tags = ('total',)
+            elif isinstance(fila["Días de Atraso"], (int, float)) and fila["Días de Atraso"] > 10:
+                tags = ('grave',)
+            else:
+                tags = ()
+
+            tree.insert("", "end", values=valores, tags=tags)
 
     def aplicar_filtro(event=None):
         filtro = entry_filtro.get().lower().strip()
@@ -2005,7 +2115,6 @@ def crear_interfaz_atrasos(root_padre):
     cargar_tree(df_original)
     entry_filtro.bind("<KeyRelease>", aplicar_filtro)
 
-    # Botón exportar
     def exportar_excel():
         ruta = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
         if ruta:
@@ -2014,9 +2123,6 @@ def crear_interfaz_atrasos(root_padre):
 
     btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
     btn_exportar.pack(pady=5)
-
-
-
 
 
 
