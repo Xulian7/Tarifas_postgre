@@ -1,22 +1,27 @@
+import os
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 import pandas as pd
-import psycopg2
+from sqlalchemy import create_engine
 from datetime import datetime
+from PIL import ImageGrab
+import io
+import win32clipboard
 
-# ---------- Configuración base de datos ----------
-DB_PARAMS = {
-    "dbname": "railway",
-    "user": "postgres",
-    "password": "cUVmSghVIpRTJkWWtUymoMaadGwzLKUn",
-    "host": "shuttle.proxy.rlwy.net",
-    "port": "38698"
-}
+# ---------- Función para crear el engine ----------
+def get_engine():
+    user = os.getenv("DB_USER", "postgres")
+    password = os.getenv("DB_PASSWORD", "cUVmSghVIpRTJkWWtUymoMaadGwzLKUn")
+    host = os.getenv("DB_HOST", "shuttle.proxy.rlwy.net")
+    port = os.getenv("DB_PORT", "38698")
+    dbname = os.getenv("DB_NAME", "railway")
+    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{dbname}"
+    return create_engine(url)
 
 # ---------- Función para obtener datos ----------
-def obtener_datos(fecha):
-    conn = psycopg2.connect(**DB_PARAMS)
+def obtener_datos(fecha_inicio, fecha_fin):
+    engine = get_engine()
     query = """
         SELECT 
             nombre_cuenta, 
@@ -27,52 +32,77 @@ def obtener_datos(fecha):
             valor,
             saldos
         FROM registros
-        WHERE fecha_sistema = %s
+        WHERE fecha_sistema BETWEEN %s AND %s
     """
-    df = pd.read_sql(query, conn, params=(fecha,))
-    conn.close()
-    return df
+    return pd.read_sql(query, engine, params=(fecha_inicio, fecha_fin))
 
 # ---------- Crear interfaz ----------
 def crear_resumen_por_cuenta_y_motivo():
     ventana = tk.Tk()
     ventana.title("Resumen por Cuenta y Motivo")
-    ventana.geometry("950x600")
+    ventana.geometry("1000x650")
 
-    # ---------- Filtro: Fecha + Botón ----------
+    # ---------- TÍTULO ----------
+    lbl_titulo = tk.Label(ventana, text="", font=("Arial", 16, "bold"))
+    lbl_titulo.pack(pady=10)
+
+    # ---------- Filtro: Fecha Inicio y Fin + Botones ----------
     frame_top = tk.Frame(ventana)
-    frame_top.pack(pady=10)
+    frame_top.pack()
 
-    tk.Label(frame_top, text="Seleccione fecha:", font=("Arial", 12)).pack(side="left", padx=10)
-    fecha_entry = DateEntry(frame_top, width=12, background='darkblue', foreground='white',
-                            borderwidth=2, date_pattern='yyyy-mm-dd')
-    fecha_entry.set_date(datetime.now())
-    fecha_entry.pack(side="left")
+    tk.Label(frame_top, text="Desde:", font=("Arial", 12)).pack(side="left", padx=5)
+    fecha_inicio = DateEntry(frame_top, width=12, background='darkblue', foreground='white',
+                             borderwidth=2, date_pattern='yyyy-mm-dd')
+    fecha_inicio.set_date(datetime.now())
+    fecha_inicio.pack(side="left")
 
+    tk.Label(frame_top, text="Hasta:", font=("Arial", 12)).pack(side="left", padx=5)
+    fecha_fin = DateEntry(frame_top, width=12, background='darkblue', foreground='white',
+                          borderwidth=2, date_pattern='yyyy-mm-dd')
+    fecha_fin.set_date(datetime.now())
+    fecha_fin.pack(side="left")
+
+    btn_cargar = tk.Button(frame_top, text="Cargar Resumen")
+    btn_cargar.pack(side="left", padx=10)
+
+    btn_captura = tk.Button(frame_top, text="📸 Capturar")
+    btn_captura.pack(side="left", padx=10)
+
+    # ---------- TREEVIEW ----------
     tree = ttk.Treeview(ventana, columns=["Cuenta", "Motivo", "Total Valor", "Total Saldos"], show="headings")
-    tree.heading("Cuenta", text="Cuenta")
-    tree.heading("Motivo", text="Motivo")
-    tree.heading("Total Valor", text="Total Valor")
-    tree.heading("Total Saldos", text="Total Saldos")
-
     for col in ["Cuenta", "Motivo", "Total Valor", "Total Saldos"]:
+        tree.heading(col, text=col)
         tree.column(col, anchor="center", width=200)
-
     tree.pack(fill="both", expand=True)
 
     scrollbar_y = ttk.Scrollbar(ventana, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar_y.set)
     scrollbar_y.pack(side="right", fill="y")
 
-    # ---------- Acción de cargar datos ----------
+    # ---------- Estilos ----------
+    style = ttk.Style()
+    style.configure("Treeview.Heading", font=("Arial", 11, "bold"))
+    style.configure("Treeview", font=("Arial", 10), rowheight=25)
+    tree.tag_configure("bold", font=("Arial", 10, "bold"))
+    tree.tag_configure("total_general", background="#d1ffd1", font=("Arial", 11, "bold"))
+
+    # ---------- Acción del botón ----------
     def cargar_datos():
         tree.delete(*tree.get_children())
-        fecha = fecha_entry.get_date()
+        inicio = fecha_inicio.get_date()
+        fin = fecha_fin.get_date()
+
+        if inicio > fin:
+            messagebox.showwarning("Fechas inválidas", "La fecha de inicio no puede ser posterior a la fecha final.")
+            return
+
+        lbl_titulo.config(text=f"📋 Reporte de valores del {inicio.strftime('%d-%m-%Y')} al {fin.strftime('%d-%m-%Y')}")
 
         try:
-            df = obtener_datos(fecha)
+            df = obtener_datos(inicio, fin)
         except Exception as e:
             print(f"Error al obtener datos: {e}")
+            tree.insert("", "end", values=("Error al obtener datos", "", "", ""))
             return
 
         if df.empty:
@@ -85,23 +115,50 @@ def crear_resumen_por_cuenta_y_motivo():
             .reset_index()
         )
 
+        total_general_valor = 0
+        total_general_saldos = 0
+
         for cuenta in resumen["nombre_cuenta"].unique():
             df_cuenta = resumen[resumen["nombre_cuenta"] == cuenta]
             total_valor_cuenta = df_cuenta["valor"].sum()
             total_saldos_cuenta = df_cuenta["saldos"].sum()
 
-            tree.insert("", "end", values=(
-                cuenta, "", f"{total_valor_cuenta:,.0f}", f"{total_saldos_cuenta:,.0f}"), tags=("bold",))
-
             for _, row in df_cuenta.iterrows():
                 tree.insert("", "end", values=(
-                    "", row["motivo"], f"{row['valor']:,.0f}", f"{row['saldos']:,.0f}"))
+                    cuenta, row["motivo"], f"{row['valor']:,.0f}", f"{row['saldos']:,.0f}"))
 
-        tree.tag_configure("bold", font=("Arial", 10, "bold"))
+            tree.insert("", "end", values=(
+                cuenta, "TOTAL", f"{total_valor_cuenta:,.0f}", f"{total_saldos_cuenta:,.0f}"), tags=("bold",))
+            tree.insert("", "end", values=("", "", "", ""))
 
-    # ---------- Botón ----------
-    btn_cargar = tk.Button(frame_top, text="Cargar Resumen", command=cargar_datos)
-    btn_cargar.pack(side="left", padx=10)
+            total_general_valor += total_valor_cuenta
+            total_general_saldos += total_saldos_cuenta
+
+        tree.insert("", "end", values=(
+            "TOTAL GENERAL", "", f"{total_general_valor:,.0f}", f"{total_general_saldos:,.0f}"), tags=("total_general",))
+
+    btn_cargar.config(command=cargar_datos)
+
+    # ---------- Acción del botón de captura al portapapeles ----------
+    def capturar_ventana():
+        ventana.update()
+        x = ventana.winfo_rootx()
+        y = ventana.winfo_rooty()
+        w = ventana.winfo_width()
+        h = ventana.winfo_height()
+        imagen = ImageGrab.grab(bbox=(x, y, x + w, y + h)).convert("RGB")
+        output = io.BytesIO()
+        imagen.save(output, format="BMP")
+        data = output.getvalue()[14:]  # quitar cabecera BMP
+
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+        win32clipboard.CloseClipboard()
+
+        messagebox.showinfo("Captura", "📸 Captura copiada al portapapeles.")
+
+    btn_captura.config(command=capturar_ventana)
 
     ventana.mainloop()
 

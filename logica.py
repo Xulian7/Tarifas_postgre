@@ -224,9 +224,15 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
 
         fecha_hoy_bd = convertir_fecha(fecha_hoy)
         fecha_bd = convertir_fecha(fecha)
+
         if fecha_hoy_bd is None or fecha_bd is None:
             conn.close()
             return
+
+        # ⚠️ Sobrescribir fecha_registro si tipo es efectivo
+        if tipo.lower() == "efectivo":
+            fecha_bd = fecha_hoy_bd
+
 
         confirmar = messagebox.askyesno("Confirmar", "¿Deseas grabar este registro?")
         if confirmar:
