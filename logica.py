@@ -240,11 +240,14 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
             ))
             conn.commit()
 
-            mostrar_msgbox_exito(entry_cedula, lambda: limpiar_formulario(
-                entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
-                entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
-                listbox_sugerencias, tree
-            ))
+            mostrar_msgbox_exito(
+                entry_cedula,
+                lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo,
+                    combo_nequi, combo_verificada, listbox_sugerencias, tree),
+                lambda: limpiar_parcial(entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
+                    listbox_sugerencias, tree)
+            )
+            
         else:
             messagebox.showinfo("Cancelado", "La operación fue cancelada.")
         conn.close()
@@ -254,7 +257,7 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
         if conn:
             conn.close()
 
-def mostrar_msgbox_exito(entry_cedula, limpiar_funcion):
+def mostrar_msgbox_exito(entry_cedula, limpiar_funcion, parcial_funcion):
     ventana = Toplevel()
     ventana.title("Éxito")
     ventana.geometry("350x150")
@@ -264,6 +267,7 @@ def mostrar_msgbox_exito(entry_cedula, limpiar_funcion):
     label.pack(pady=20)
     botones_frame = tk.Frame(ventana)
     botones_frame.pack(pady=10)
+    
     btn_generar = tk.Button(botones_frame, text="Generar Recibo", width=15,
     command=lambda: [
         mostrar_registros(entry_cedula),
@@ -271,8 +275,11 @@ def mostrar_msgbox_exito(entry_cedula, limpiar_funcion):
         ventana.destroy()
     ])
     btn_generar.pack(side="left", padx=10)
-    btn_aceptar = tk.Button(botones_frame, text="No generar", width=10,
-                            command=lambda: [limpiar_funcion(), ventana.destroy()])
+    
+    btn_aceptar = tk.Button(botones_frame, text="Repetir Cliente", width=10,
+    command=lambda: [
+        parcial_funcion(),
+        ventana.destroy()])
     btn_aceptar.pack(side="right", padx=10)
 
 def limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha,
@@ -299,7 +306,22 @@ combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
     for row in tree.get_children():
         tree.delete(row)
         
-    # Colocar el enfoque en entry_cedula
+def limpiar_parcial(entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha,
+combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
+    # Limpiar campos de texto (Entry)
+    entry_monto.delete(0, tk.END)
+    entry_saldos.delete(0, tk.END)
+    entry_referencia.delete(0, tk.END)
+    entry_fecha.delete(0, tk.END)
+    combo_motivo.set('N-a')  # Resetear el ComboBox de Motivo
+    # Limpiar los Combobox
+    combo_tipo.set('')  # Resetear el ComboBox de Tipo
+    combo_nequi.set('')  # Resetear el ComboBox de Nequi
+    combo_verificada.set('No')  # Resetear el ComboBox de Verificada
+    listbox_sugerencias.grid_forget()
+    # Limpiar Treeview
+    for row in tree.get_children():
+        tree.delete(row)
 
 def cargar_nequi_opciones():
     try:
@@ -1697,12 +1719,6 @@ def ventana_propietario():
     cargar_propietarios()
 
 def join_and_export():
-    import tkinter as tk
-    from tkinter import filedialog, messagebox
-    import os
-    import pandas as pd
-    import psycopg2
-    from dotenv import load_dotenv
 
     load_dotenv()
 
@@ -2123,8 +2139,6 @@ def crear_interfaz_atrasos(root_padre):
 
     btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
     btn_exportar.pack(pady=5)
-
-
 
 def crear_ventana_blacklist(data):
     ventana = tk.Toplevel()

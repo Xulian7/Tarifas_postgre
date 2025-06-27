@@ -10,6 +10,7 @@ from PIL import Image, ImageTk
 from tkinter import PhotoImage
 from logica import *  # Importar todas las funciones de logica.py
 import psycopg2
+import pyautogui
 
 # Cargar las variables del archivo .env
 load_dotenv()
@@ -116,7 +117,7 @@ def actualizar_sugerencias_por_placa(event):
             FROM clientes
             WHERE UPPER(placa) LIKE %s
             ORDER BY LENGTH(placa) 
-            LIMIT 5
+            LIMIT 3
         """, (texto + '%',))
         resultados = cursor.fetchall()
         conn.close()
@@ -189,7 +190,6 @@ tipos_opciones = ["N-a", "otras deudas", "multa"]
 combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=27)
 combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
 combo_motivo.set("N-a")
-
 
 # Crea el frame para las sugerencias
 frame_sugerencias = tk.Frame(frame_formulario, width=150, height=100)  # Ajusta según necesidad
@@ -300,9 +300,6 @@ verificada_opciones = ["", "Si", "No"]
 combo_verificada = ttk.Combobox(frame_formulario, values=verificada_opciones, state="readonly", width=ancho_widget)
 combo_verificada.grid(row=5, column=4, padx=5, pady=3, sticky="w")
 combo_verificada.set("No")  # Establecer "No" como valor por defecto
-
-
-
 
 # Función para cargar imágenes con tamaño uniforme
 imagenes = {}
@@ -532,7 +529,14 @@ def on_double_click(event, tree):
                 new_values = list(item_values)
                 new_values[12] = "Si"  # Cambiar el estado en la visualización
                 tree.item(selected_item, values=new_values)
-
+                entry_codigo.delete(0, tk.END)  # Limpiar el Entry de filtro
+                entry_codigo.focus_set()
+                entry_codigo.focus_set()
+                pyautogui.press('enter')
+                cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada)
+                tomar_foto_tree(tree)  # Actualizar la foto del Treeview
+                
+                
                 messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo actualizar el registro: {e}")
