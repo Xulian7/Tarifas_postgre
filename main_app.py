@@ -1,26 +1,15 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
-from dotenv import load_dotenv
 import os
 from datetime import datetime
-import pandas as pd
-import tkinter.font as tkFont
 from PIL import Image, ImageTk
 from tkinter import PhotoImage
-from logica import *  # Importar todas las funciones de logica.py
-import psycopg2
+from logica import *  
 import pyautogui
-
-# Cargar las variables del archivo .env
-load_dotenv()
-# Acceder a las variables
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
-DATABASE_URL = os.getenv("DATABASE_URL")
+from sqlalchemy import update, select, func
+from conexion import engine, clientes, propietario, registros
+import logging
 
 
 datos_cargados = []  # Variable global para guardar los datos de tree
@@ -61,6 +50,7 @@ tk.Label(frame_formulario, text="Nombre:").grid(row=1, column=0, padx=5, pady=3,
 entry_nombre = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
 entry_nombre.grid(row=1, column=1, padx=5, pady=3, sticky="w")
 
+# Función para actualizar las sugerencias de nombres
 def actualizar_sugerencias(event):
     texto = entry_nombre.get()
     listbox_sugerencias.delete(0, tk.END)
@@ -70,17 +60,14 @@ def actualizar_sugerencias(event):
         return
 
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT nombre 
-            FROM clientes 
-            WHERE nombre ILIKE %s
-            ORDER BY LENGTH(nombre)
-            LIMIT 5
-        """, (f"%{texto}%",))
-        resultados = cursor.fetchall()
-        conn.close()
+        with engine.connect() as conn:
+            stmt = (
+                select(clientes.c.nombre)
+                .where(clientes.c.nombre.ilike(f"%{texto}%"))
+                .order_by(func.length(clientes.c.nombre))
+                .limit(5)
+            )
+            resultados = conn.execute(stmt).fetchall()
     except Exception as e:
         print(f"Error al conectar a la base de datos: {e}")
         return
@@ -94,13 +81,13 @@ def actualizar_sugerencias(event):
         frame_sugerencias.grid()
     else:
         listbox_sugerencias.grid_forget()
-
 entry_nombre.bind("<KeyRelease>", actualizar_sugerencias)
 
 tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=3, sticky="e")
 entry_placa = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
 entry_placa.grid(row=2, column=1, padx=5, pady=3, sticky="w")
 
+# Función para actualizar las sugerencias de placas
 def actualizar_sugerencias_por_placa(event):
     texto = entry_placa.get().strip().upper()
     listbox_sugerencias.delete(0, tk.END)
@@ -110,17 +97,14 @@ def actualizar_sugerencias_por_placa(event):
         return
 
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT nombre 
-            FROM clientes
-            WHERE UPPER(placa) LIKE %s
-            ORDER BY LENGTH(placa) 
-            LIMIT 3
-        """, (texto + '%',))
-        resultados = cursor.fetchall()
-        conn.close()
+        with engine.connect() as conn:
+            stmt = (
+                select(clientes.c.nombre)
+                .where(func.upper(clientes.c.placa).like(texto + '%'))
+                .order_by(func.length(clientes.c.placa))
+                .limit(3)
+            )
+            resultados = conn.execute(stmt).fetchall()
     except Exception as e:
         print(f"💥 Error al conectar con PostgreSQL: {e}")
         return
@@ -134,7 +118,6 @@ def actualizar_sugerencias_por_placa(event):
         frame_sugerencias.grid()
     else:
         listbox_sugerencias.grid_forget()
-
 entry_placa.bind("<KeyRelease>", actualizar_sugerencias_por_placa)
 
 # Crear la función para seleccionar la sugerencia y actualizar los otros campos
@@ -148,34 +131,27 @@ def seleccionar_sugerencia(event):
         entry_nombre.insert(0, nombre_seleccionado)
 
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
+            with engine.connect() as conn:
+                stmt = (
+                    select(clientes.c.cedula, clientes.c.placa)
+                    .where(clientes.c.nombre == nombre_seleccionado)
+                )
+                resultado = conn.execute(stmt).fetchone()
 
-            # Buscar cédula y placa
-            cursor.execute("""
-                SELECT cedula, placa 
-                FROM clientes 
-                WHERE nombre = %s
-            """, (nombre_seleccionado,))
-            resultado = cursor.fetchone()
+                if resultado:
+                    cedula, placa = resultado
 
-            if resultado:
-                cedula, placa = resultado
+                    entry_cedula.delete(0, tk.END)
+                    entry_cedula.insert(0, cedula)
 
-                entry_cedula.delete(0, tk.END)
-                entry_cedula.insert(0, cedula)
-                entry_placa.delete(0, tk.END)
-                entry_placa.insert(0, placa)
+                    entry_placa.delete(0, tk.END)
+                    entry_placa.insert(0, placa)
 
-
-        except psycopg2.Error as e:
+        except Exception as e:
             messagebox.showerror("Error", f"Error de base de datos:\n{e}")
-        finally:
-            if conn:
-                cursor.close()
-                conn.close()
 
         listbox_sugerencias.place_forget()
+
 
 tk.Label(frame_formulario, text="Tarifa:").grid(row=3, column=0, padx=5, pady=3, sticky="e")
 entry_monto = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
@@ -243,25 +219,29 @@ tk.Label(frame_formulario, text="Cuenta:").grid(row=4, column=3, padx=5, pady=3,
 combo_nequi = ttk.Combobox(frame_formulario, values=nequi_opciones, state="disabled", width=ancho_widget)
 combo_nequi.grid(row=4, column=4, padx=5, pady=3, sticky="w")
 
+# Asociar la función de actualización de nequi al Entry de placa
 def llenar_nequi_por_placa():
     placa = entry_placa.get().strip()
     if not placa:
         combo_nequi.set("")  # Limpia si no hay placa
         return
+
     try:
-        df = pd.read_excel("diccionarios/cuentas.xlsx")
-        # Validar columnas
-        if "Placa" not in df.columns or "Cuenta" not in df.columns or df.empty:
-            combo_nequi.set("")
-            return
-        fila = df.loc[df["Placa"] == placa]
-        if not fila.empty:
-            cuenta = fila["Cuenta"].values[0]
-            combo_nequi.set(cuenta)
-        else:
-            combo_nequi.set("")  # No encontró placa
+        with engine.connect() as conn:
+            stmt = (
+                select(propietario.c.cuenta)
+                .where(propietario.c.placa == placa)
+                .limit(1)
+            )
+            resultado = conn.execute(stmt).fetchone()
+
+            if resultado:
+                cuenta = resultado[0]
+                combo_nequi.set(cuenta)
+            else:
+                combo_nequi.set("")  # No encontró placa
     except Exception as e:
-        print(f"Error leyendo cuentas.xlsx: {e}")
+        print(f"💥 Error consultando la base de datos: {e}")
         combo_nequi.set("")  # Limpia combo ante error
 
 def actualizar_nequi(*args):
@@ -362,8 +342,8 @@ btn_mora.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
 btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=abrir_gestion_deudas)
-btn_deudas.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
+#btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=abrir_gestion_deudas)
+#btn_deudas.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
 
 # Frame de información (derecha)
 frame_derecho = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
@@ -395,13 +375,13 @@ subframe_datos.columnconfigure(0, weight=0)  # Label
 subframe_datos.columnconfigure(1, weight=1)  # Entry (para que se estire si hay espacio)
 # Elementos nuevos dentro del sub-frame
 
-
 def verificar_conexion():
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.close()
+        with engine.connect() as conn:
+            pass
         return True
-    except Exception:
+    except Exception as e:
+        logging.warning(f"🔌 Sin conexión: {e}")
         return False
 
 def actualizar_estado():
@@ -409,9 +389,7 @@ def actualizar_estado():
         estado_label.config(text="🟢 En línea", fg="green")
     else:
         estado_label.config(text="🔴 Sin conexión", fg="red")
-    # Se ejecuta de nuevo en 10 segundos
-    ventana.after(10000, actualizar_estado)
-
+    ventana.after(10000, actualizar_estado)  # Reintenta cada 10 segundos
 
 def filtrar_por_referencia(event):
     global datos_tree_original
@@ -497,6 +475,8 @@ ventana.grid_columnconfigure(0, weight=1)
 tree_frame.grid_rowconfigure(0, weight=1)
 tree_frame.grid_columnconfigure(0, weight=1)
 
+
+
 def on_double_click(event, tree):
     # Obtener el item seleccionado
     selected_item = tree.selection()
@@ -517,27 +497,29 @@ def on_double_click(event, tree):
         confirmar = messagebox.askyesno("Confirmación", "¿Desea marcar este registro como verificado?")
         if confirmar:
             try:
-                # Conectar a la base de datos PostgreSQL y actualizar el estado
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE registros SET Verificada = 'Si' WHERE id = %s", (id_registro,))
-                conn.commit()
-                cursor.close()
-                conn.close()
+                with engine.begin() as conn:
+                    stmt = (
+                        update(registros)
+                        .where(registros.c.id == id_registro)
+                        .values(Verificada='Si')
+                    )
+                    conn.execute(stmt)
 
-                # Actualizar el Treeview
+                # Actualizar visualmente el Treeview
                 new_values = list(item_values)
                 new_values[12] = "Si"  # Cambiar el estado en la visualización
                 tree.item(selected_item, values=new_values)
+
                 entry_codigo.delete(0, tk.END)  # Limpiar el Entry de filtro
                 entry_codigo.focus_set()
-                entry_codigo.focus_set()
                 pyautogui.press('enter')
+
+                # Recargar la vista
                 cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada)
-                tomar_foto_tree(tree)  # Actualizar la foto del Treeview
-                
-                
+                tomar_foto_tree(tree)  # Actualizar imagen asociada
+
                 messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
+
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo actualizar el registro: {e}")
 
