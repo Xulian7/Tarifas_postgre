@@ -1,5 +1,8 @@
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, MetaData, Table
+
+load_dotenv()
 
 def get_engine():
     user = os.getenv("DB_USER")

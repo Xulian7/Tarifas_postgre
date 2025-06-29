@@ -8,8 +8,11 @@ from tkinter import PhotoImage
 from logica import *  
 import pyautogui
 from sqlalchemy import update, select, func
-from conexion import engine, clientes, propietario, registros
 import logging
+from conexion import engine
+from conexion import clientes as tabla_clientes
+from conexion import registros as tabla_registros
+from conexion import propietario as tabla_propietario
 
 
 datos_cargados = []  # Variable global para guardar los datos de tree
@@ -62,9 +65,9 @@ def actualizar_sugerencias(event):
     try:
         with engine.connect() as conn:
             stmt = (
-                select(clientes.c.nombre)
-                .where(clientes.c.nombre.ilike(f"%{texto}%"))
-                .order_by(func.length(clientes.c.nombre))
+                select(tabla_clientes.c.nombre)
+                .where(tabla_clientes.c.nombre.ilike(f"%{texto}%"))
+                .order_by(func.length(tabla_clientes.c.nombre))
                 .limit(5)
             )
             resultados = conn.execute(stmt).fetchall()
@@ -81,6 +84,8 @@ def actualizar_sugerencias(event):
         frame_sugerencias.grid()
     else:
         listbox_sugerencias.grid_forget()
+
+        
 entry_nombre.bind("<KeyRelease>", actualizar_sugerencias)
 
 tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=3, sticky="e")
@@ -99,9 +104,9 @@ def actualizar_sugerencias_por_placa(event):
     try:
         with engine.connect() as conn:
             stmt = (
-                select(clientes.c.nombre)
-                .where(func.upper(clientes.c.placa).like(texto + '%'))
-                .order_by(func.length(clientes.c.placa))
+                select(tabla_clientes.c.nombre)
+                .where(func.upper(tabla_clientes.c.placa).like(texto + '%'))
+                .order_by(func.length(tabla_clientes.c.placa))
                 .limit(3)
             )
             resultados = conn.execute(stmt).fetchall()
@@ -118,6 +123,8 @@ def actualizar_sugerencias_por_placa(event):
         frame_sugerencias.grid()
     else:
         listbox_sugerencias.grid_forget()
+
+        
 entry_placa.bind("<KeyRelease>", actualizar_sugerencias_por_placa)
 
 # Crear la función para seleccionar la sugerencia y actualizar los otros campos
@@ -133,8 +140,8 @@ def seleccionar_sugerencia(event):
         try:
             with engine.connect() as conn:
                 stmt = (
-                    select(clientes.c.cedula, clientes.c.placa)
-                    .where(clientes.c.nombre == nombre_seleccionado)
+                    select(tabla_clientes.c.cedula, tabla_clientes.c.placa)
+                    .where(tabla_clientes.c.nombre == nombre_seleccionado)
                 )
                 resultado = conn.execute(stmt).fetchone()
 
@@ -229,8 +236,8 @@ def llenar_nequi_por_placa():
     try:
         with engine.connect() as conn:
             stmt = (
-                select(propietario.c.cuenta)
-                .where(propietario.c.placa == placa)
+                select(tabla_propietario.c.cuenta)
+                .where(tabla_propietario.c.placa == placa)
                 .limit(1)
             )
             resultado = conn.execute(stmt).fetchone()
@@ -475,8 +482,6 @@ ventana.grid_columnconfigure(0, weight=1)
 tree_frame.grid_rowconfigure(0, weight=1)
 tree_frame.grid_columnconfigure(0, weight=1)
 
-
-
 def on_double_click(event, tree):
     # Obtener el item seleccionado
     selected_item = tree.selection()
@@ -499,9 +504,9 @@ def on_double_click(event, tree):
             try:
                 with engine.begin() as conn:
                     stmt = (
-                        update(registros)
-                        .where(registros.c.id == id_registro)
-                        .values(Verificada='Si')
+                        update(tabla_registros)
+                        .where(tabla_registros.c.id == id_registro)
+                        .values(verificada='Si')
                     )
                     conn.execute(stmt)
 
@@ -510,19 +515,22 @@ def on_double_click(event, tree):
                 new_values[12] = "Si"  # Cambiar el estado en la visualización
                 tree.item(selected_item, values=new_values)
 
-                entry_codigo.delete(0, tk.END)  # Limpiar el Entry de filtro
+                entry_codigo.delete(0, tk.END)
                 entry_codigo.focus_set()
                 pyautogui.press('enter')
 
-                # Recargar la vista
-                cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada)
-                tomar_foto_tree(tree)  # Actualizar imagen asociada
+                cargar_db(
+                    tree,
+                    entry_cedula, entry_nombre, entry_placa,
+                    entry_referencia, entry_fecha,
+                    combo_tipo, combo_nequi, combo_verificada
+                )
+                tomar_foto_tree(tree)
 
                 messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
 
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo actualizar el registro: {e}")
-
 
 # Asociar el evento al Treeview
 tree.bind("<Double-1>", lambda event: on_double_click(event, tree))

@@ -20,18 +20,11 @@ import ctypes
 from tkinter import Toplevel
 import psycopg2
 from sqlalchemy import create_engine
-
+from sqlalchemy import select, case, and_, or_
+from conexion import engine, clientes as tabla_clientes, registros as tabla_registros, propietario as tabla_propietario
 
 JSON_PATH = 'diccionarios/columnas.json'
 XLSX_PATH = 'diccionarios/estructura.xlsx'
-# Cargar las variables del archivo .env
-load_dotenv()
-# Acceder a las variables
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
 # Establecer configuraciones locales - español
 locale.setlocale(locale.LC_ALL, 'es_CO.utf8')
 ventana_clientes = None  # Variable global dentro del módulo
@@ -47,86 +40,70 @@ def get_connection():
         port=os.getenv("DB_PORT")
     )
 
-# ---------- Crear engine de SQLAlchemy ----------
-def get_engine():
-    user = os.getenv("DB_USER")
-    password = os.getenv("DB_PASSWORD")
-    host = os.getenv("DB_HOST")
-    port = os.getenv("DB_PORT")
-    dbname = os.getenv("DB_NAME")
-
-    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{dbname}"
-    return create_engine(url)
 
 # ---------- Cargar datos desde PostgreSQL ----------
 def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada):
     try:
-        # Obtener los valores de los widgets
-        cedula = entry_cedula.get()
-        nombre = entry_nombre.get()
-        placa = entry_placa.get()
+        cedula     = entry_cedula.get()
+        nombre     = entry_nombre.get()
+        placa      = entry_placa.get()
         referencia = entry_referencia.get()
-        fecha = entry_fecha.get()
-        tipo = combo_tipo.get()
-        nequi = combo_nequi.get()
+        fecha      = entry_fecha.get()
+        tipo       = combo_tipo.get()
+        nequi      = combo_nequi.get()
         verificada = combo_verificada.get()
 
         if fecha:
             fecha = datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%d")
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # Armar query
-        query = """
-            SELECT r.id, r.Fecha_sistema, r.Fecha_registro, r.Cedula, r.Nombre, 
-                   r.Placa, r.Valor, r.Saldos, r.Motivo, r.Tipo, r.Nombre_cuenta, 
-                   r.Referencia, r.Verificada
-            FROM registros r
-            LEFT JOIN propietario p ON r.Placa = p.Placa
-            WHERE 1=1
-        """
-        params = []
+        condiciones = []
 
         if cedula:
-            query += " AND r.Cedula = %s"
-            params.append(cedula)
+            condiciones.append(tabla_registros.c.cedula == cedula)
         if nombre:
-            query += " AND r.Nombre ILIKE %s"
-            params.append(f"%{nombre}%")
+            condiciones.append(tabla_registros.c.nombre.ilike(f"%{nombre}%"))
         if placa:
-            query += " AND r.Placa ILIKE %s"
-            params.append(f"%{placa}%")
+            condiciones.append(tabla_registros.c.placa.ilike(f"%{placa}%"))
         if referencia:
-            query += " AND r.Referencia ILIKE %s"
-            params.append(f"%{referencia}%")
+            condiciones.append(tabla_registros.c.referencia.ilike(f"%{referencia}%"))
         if fecha:
-            query += " AND r.Fecha_registro = %s"
-            params.append(fecha)
+            condiciones.append(tabla_registros.c.fecha_registro == fecha)
         if tipo:
-            query += " AND r.Tipo = %s"
-            params.append(tipo)
+            condiciones.append(tabla_registros.c.tipo == tipo)
         if nequi:
-            query += " AND r.Nombre_cuenta = %s"
-            params.append(nequi)
+            condiciones.append(tabla_registros.c.nombre_cuenta == nequi)
         if verificada:
-            query += " AND r.Verificada = %s"
-            params.append(verificada)
+            condiciones.append(tabla_registros.c.verificada == verificada)
 
-        # Ejecutar la consulta
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        stmt = (
+            select(
+                tabla_registros.c.id,
+                tabla_registros.c.fecha_sistema,
+                tabla_registros.c.fecha_registro,
+                tabla_registros.c.cedula,
+                tabla_registros.c.nombre,
+                tabla_registros.c.placa,
+                tabla_registros.c.valor,
+                tabla_registros.c.saldos,
+                tabla_registros.c.motivo,
+                tabla_registros.c.tipo,
+                tabla_registros.c.nombre_cuenta,
+                tabla_registros.c.referencia,
+                tabla_registros.c.verificada
+            )
+            .select_from(tabla_registros.outerjoin(tabla_propietario, tabla_registros.c.placa == tabla_propietario.c.placa))
+            .where(and_(*condiciones))
+        )
 
-        # Limpiar el TreeView
-        for row in tree.get_children():
-            tree.delete(row)
+        with engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
 
-        # Ordenar por Cedula y Fecha_sistema
+        tree.delete(*tree.get_children())
+
         rows.sort(key=lambda x: (str(x[3]), str(x[1])))
 
         for row in rows:
-            fecha_sistema = pd.to_datetime(row[1]).strftime('%d-%m-%Y')
+            fecha_sistema  = pd.to_datetime(row[1]).strftime('%d-%m-%Y')
             fecha_registro = pd.to_datetime(row[2]).strftime('%d-%m-%Y')
 
             values = list(row)
@@ -135,13 +112,14 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
 
             tree.insert("", "end", values=values)
 
-        # Ajustar columnas automáticamente
         for col in tree["columns"]:
             max_width = max([tkFont.Font().measure(col)] + [tkFont.Font().measure(str(value)) for value in rows])
             tree.column(col, width=max_width)
 
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo cargar los datos desde PostgreSQL: {e}")
+
+
 
 # ---------- Agregar registro a la base de datos ----------
 def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
@@ -1785,20 +1763,33 @@ def join_and_export():
 
 # ---------- Función para obtener datos ----------
 def obtener_datos(fecha_inicio, fecha_fin):
-    engine = get_engine()
-    query = """
-        SELECT 
-            nombre_cuenta, 
-            CASE 
-                WHEN motivo = 'N-a' THEN 'Tarifas'
-                ELSE motivo 
-            END AS motivo,
-            valor,
-            saldos
-        FROM registros
-        WHERE fecha_sistema BETWEEN %s AND %s
-    """
-    return pd.read_sql(query, engine, params=(fecha_inicio, fecha_fin))
+    try:
+        stmt = (
+            select(
+                tabla_registros.c.Nombre_cuenta.label("nombre_cuenta"),
+                case(
+                    (tabla_registros.c.Motivo == 'N-a', 'Tarifas'),
+                    else_=tabla_registros.c.Motivo
+                ).label("motivo"),
+                tabla_registros.c.Valor.label("valor"),
+                tabla_registros.c.Saldos.label("saldos")
+            )
+            .where(
+                and_(
+                    tabla_registros.c.Fecha_sistema >= fecha_inicio,
+                    tabla_registros.c.Fecha_sistema <= fecha_fin
+                )
+            )
+        )
+
+        with engine.connect() as conn:
+            df = pd.read_sql(stmt, conn)
+
+        return df
+
+    except Exception as e:
+        print(f"💥 Error al obtener datos: {e}")
+        return pd.DataFrame()
 
 # ---------- Crear interfaz ----------------------
 def crear_resumen_por_cuenta_y_motivo():
@@ -1926,81 +1917,74 @@ def crear_resumen_por_cuenta_y_motivo():
 
     ventana.mainloop()
 
-
 # ---------- Función para generar reporte de atrasos ----------
 def reporte_atrasos():
     try:
-        engine = get_engine()
         with engine.connect() as conn:
-            registros = pd.read_sql("SELECT * FROM registros", conn)
-            clientes = pd.read_sql("SELECT * FROM clientes", conn)
+            df_registros = pd.read_sql(select(tabla_registros), conn)
+            df_clientes = pd.read_sql(select(tabla_clientes), conn)
 
-        registros.columns = registros.columns.str.lower()
-        clientes.columns = clientes.columns.str.lower()
+        df_registros.columns = df_registros.columns.str.lower()
+        df_clientes.columns = df_clientes.columns.str.lower()
 
-        fecha_actual = datetime.now().date()
+        hoy = datetime.now().date()
         resultados = []
 
-        for _, cliente in clientes.iterrows():
+        for _, cliente in df_clientes.iterrows():
             placa = cliente.get('placa', '')
             if '*' in str(placa):
                 continue
 
-            cedula = cliente['cedula']
-            nombre = cliente['nombre']
             try:
+                cedula = cliente['cedula']
+                nombre = cliente['nombre']
                 fecha_inicio = pd.to_datetime(cliente['fecha_inicio']).date()
                 fecha_final = int(cliente['fecha_final'])
                 valor_cuota = float(cliente['valor_cuota'])
-            except (ValueError, TypeError):
+
+                if valor_cuota <= 0:
+                    continue
+
+                dias_transcurridos = min((hoy - fecha_inicio).days + 1, fecha_final)
+                monto_esperado = dias_transcurridos * valor_cuota
+
+                pagos_cliente = df_registros[df_registros['cedula'] == cedula].copy()
+                pagos_cliente['fecha_sistema'] = pd.to_datetime(pagos_cliente['fecha_sistema'], errors='coerce').dt.date
+                pagos_cliente.dropna(subset=['fecha_sistema'], inplace=True)
+
+                total_pagado = pagos_cliente['valor'].sum()
+                dias_cubiertos = round(total_pagado / valor_cuota, 1)
+                dias_atraso = dias_transcurridos - dias_cubiertos
+
+                pagos_dias = [
+                    int(pagos_cliente[pagos_cliente['fecha_sistema'] == hoy - timedelta(days=i)]['valor'].sum() / 1000)
+                    for i in range(10)
+                ]
+
+                resultados.append({
+                    "Placa": placa,
+                    "Nombre": nombre,
+                    "Antigüedad": dias_transcurridos,
+                    "Días de Atraso": round(dias_atraso, 1),
+                    "Monto Adeudado": int(round(monto_esperado - total_pagado)),
+                    **{f"Día {i+1}": valor for i, valor in enumerate(pagos_dias)}
+                })
+
+            except (ValueError, TypeError, KeyError):
                 continue
-
-            if valor_cuota <= 0:
-                continue
-
-            dias_transcurridos = min((fecha_actual - fecha_inicio).days + 1, fecha_final)
-            monto_esperado = dias_transcurridos * valor_cuota
-
-            pagos_cliente = registros[registros['cedula'] == cedula].copy()
-            if pagos_cliente['fecha_sistema'].dtype == 'O':
-                pagos_cliente['fecha_sistema'] = pd.to_datetime(pagos_cliente['fecha_sistema']).dt.date
-
-            total_pagado = pagos_cliente['valor'].sum()
-            dias_cubiertos = round(total_pagado / valor_cuota, 1)
-            dias_atraso = dias_transcurridos - dias_cubiertos
-
-            pagos_dias = []
-            for i in range(10):
-                fecha_consulta = fecha_actual - timedelta(days=i)
-                pagos_en_fecha = pagos_cliente[pagos_cliente['fecha_sistema'] == fecha_consulta]
-                pagos_dias.append(int(pagos_en_fecha['valor'].sum() / 1000))  # Valor entero
-
-            resultados.append({
-                "Placa": placa,
-                "Nombre": nombre,
-                "Antigüedad": dias_transcurridos,
-                "Días de Atraso": round(dias_atraso, 1),
-                "Monto Adeudado": int(round(monto_esperado - total_pagado)),  # Entero sin decimales
-                **{f"Día {i+1}": p for i, p in enumerate(pagos_dias)}
-            })
 
         df = pd.DataFrame(resultados)
 
         if not df.empty:
-            df = df.sort_values(by="Días de Atraso", ascending=False)
-            df.insert(0, "#", range(1, len(df) + 1))  # Enumeración
+            df.sort_values(by="Días de Atraso", ascending=False, inplace=True)
+            df.insert(0, "#", range(1, len(df) + 1))
 
-            # Fila vacía
-            fila_vacia = pd.Series([""] * len(df.columns), index=df.columns)
-            df.loc[len(df)] = fila_vacia
-            # Fila TOTAL
-            total_adeudado = (
-                pd.to_numeric(df["Monto Adeudado"].replace('', 0), errors='coerce')
-                .fillna(0)
-                .astype(int)
-                .sum()
-            )
-            fila_total = pd.Series([""] * len(df.columns), index=df.columns)
+            # Agregar fila vacía
+            df.loc[len(df)] = [""] * len(df.columns)
+
+            # Agregar fila TOTAL
+            total_adeudado = pd.to_numeric(df["Monto Adeudado"], errors='coerce').fillna(0).astype(int).sum()
+            fila_total = {col: "" for col in df.columns}
             fila_total["Nombre"] = "TOTAL"
             fila_total["Monto Adeudado"] = total_adeudado
             fila_total["#"] = ""
@@ -2009,7 +1993,7 @@ def reporte_atrasos():
         return df
 
     except Exception as e:
-        print(f"Error en reporte_atrasos: {e}")
+        print(f"💥 Error en reporte_atrasos: {e}")
         return pd.DataFrame()
 
 # ---------- Crear interfaz de atrasos ----------
