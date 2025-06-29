@@ -350,7 +350,7 @@ btn_export.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
 btn_propietario = tk.Button(frame_botones, text=" Aliados", image=cargar_imagen("llave"), compound="left" , width=ancho_widget,  command=ventana_propietario)
 btn_propietario.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
-btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=mostrar_consulta_registros)
+btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=crear_resumen_por_cuenta_y_motivo)
 btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
 
 btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(root_padre=ventana))

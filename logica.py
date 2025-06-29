@@ -40,6 +40,7 @@ locale.setlocale(locale.LC_ALL, 'es_CO.utf8')
 ventana_clientes = None  # Variable global dentro del módulo
 ventana_atrasos = None  # Variable global para evitar duplicados
 
+# ---------- Conexiones psycopg2 ----------
 def get_connection():
     return psycopg2.connect(
         dbname=os.getenv("DB_NAME"),
@@ -48,7 +49,8 @@ def get_connection():
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT")
     )
-    
+
+# ---------- Crear engine de SQLAlchemy ----------
 def get_engine():
     user = os.getenv("DB_USER")
     password = os.getenv("DB_PASSWORD")
@@ -59,6 +61,7 @@ def get_engine():
     url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{dbname}"
     return create_engine(url)
 
+# ---------- Cargar datos desde PostgreSQL ----------
 def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada):
     try:
         # Obtener los valores de los widgets
@@ -143,6 +146,7 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo cargar los datos desde PostgreSQL: {e}")
 
+# ---------- Agregar registro a la base de datos ----------
 def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
                      entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
                      listbox_sugerencias):
@@ -263,6 +267,7 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
         if conn:
             conn.close()
 
+# ---------- Mostrar mensaje de éxito en un MsgBox ----------
 def mostrar_msgbox_exito(entry_cedula, limpiar_funcion, parcial_funcion):
     ventana = Toplevel()
     ventana.title("Éxito")
@@ -288,6 +293,7 @@ def mostrar_msgbox_exito(entry_cedula, limpiar_funcion, parcial_funcion):
         ventana.destroy()])
     btn_aceptar.pack(side="right", padx=10)
 
+# ---------- Limpiar formulario completo ----------
 def limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha,
 combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
     # Limpiar campos de texto (Entry)
@@ -311,7 +317,8 @@ combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
     # Limpiar Treeview
     for row in tree.get_children():
         tree.delete(row)
-        
+
+# ---------- Limpiar formulario parcial ----------       
 def limpiar_parcial(entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha,
 combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
     # Limpiar campos de texto (Entry)
@@ -329,6 +336,7 @@ combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
     for row in tree.get_children():
         tree.delete(row)
 
+# ---------- Cargar opciones de Nequi desde la base de datos ----------
 def cargar_nequi_opciones():
     try:
         conn = get_connection()
@@ -348,6 +356,7 @@ def cargar_nequi_opciones():
         print(f"Error al cargar los datos: {e}")
         return []
 
+# ---------- Convertir fecha de string a objeto date ----------
 def convertir_fecha(fecha_str):
     """Convierte una fecha en formato dd-mm-yyyy a un objeto date."""
     try:
@@ -356,6 +365,7 @@ def convertir_fecha(fecha_str):
         messagebox.showerror("Error", "Formato de fecha incorrecto. Use dd-mm-yyyy.")
         return None
 
+# ---------- Ajustar automáticamente el ancho de las columnas ----------
 def ajustar_columnas(tree):
     """Ajusta automáticamente el ancho de las columnas en función del contenido."""
     for col in tree["columns"]:
@@ -366,6 +376,7 @@ def ajustar_columnas(tree):
             max_len = max(max_len, len(text))
         tree.column(col, width=max_len * 10)  # Ajusta el ancho en función del contenido
 
+# ---------- Obtener datos de clientes desde PostgreSQL ----------
 def obtener_datos_clientes():
     """Obtiene los datos de la tabla clientes desde la base de datos PostgreSQL y formatea Capital y Fecha_inicio."""
     try:
@@ -421,6 +432,7 @@ def obtener_datos_clientes():
             cursor.close()
             conexion.close()
 
+# ---------- Abrir ventana de clientes ----------
 def abrir_ventana_clientes():
     
     global ventana_clientes
@@ -925,11 +937,13 @@ def abrir_ventana_clientes():
     ventana_clientes.protocol("WM_DELETE_WINDOW", cerrar_ventana_clientes)
     return ventana_clientes  # Si quieres capturar la ventana creada
 
+# ---------- Cerrar ventana de clientes ----------
 def cerrar_ventana_clientes():
     global ventana_clientes
     ventana_clientes.destroy()
     ventana_clientes = None  # Resetea la variable
 
+# ---------- Abrir ventana de gestión de cuentas ----------
 def abrir_ventana_cuentas():
     # Crear ventana
     ventana_cuentas = tk.Toplevel()
@@ -1116,6 +1130,7 @@ def abrir_ventana_cuentas():
     ventana_cuentas.columnconfigure(0, weight=1)
     ventana_cuentas.rowconfigure(0, weight=1)
 
+# ---------- Función para mostrar registros de un cliente ----------
 def mostrar_registros(entry_cedula):
     cedula = entry_cedula.get().strip()
     # Obtener alto de la pantalla
@@ -1416,6 +1431,7 @@ def mostrar_registros(entry_cedula):
     except Exception as e:
         messagebox.showerror("Error", f"Error inesperado: {str(e)}")
 
+# ---------- Ventana de gestión de propietarios ----------
 def ventana_propietario():
     # Crear ventana secundaria
     ventana_propietario = tk.Toplevel()
@@ -1724,6 +1740,7 @@ def ventana_propietario():
 
     cargar_propietarios()
 
+# ---------- Función para unir tablas y exportar a Excel ----------
 def join_and_export():
 
     load_dotenv()
@@ -1769,132 +1786,151 @@ def join_and_export():
         if 'conn' in locals():
             conn.close()
 
-def mostrar_consulta_registros():
-    # Función para crear y mostrar la interfaz de consulta
-    def buscar_registros():
-        # Obtener los valores de las fechas
-        fecha_sis_inicio = date_sis_inicio.get_date()
-        fecha_sis_fin = date_sis_fin.get_date()
+# ---------- Función para obtener datos ----------
+def obtener_datos(fecha_inicio, fecha_fin):
+    engine = get_engine()
+    query = """
+        SELECT 
+            nombre_cuenta, 
+            CASE 
+                WHEN motivo = 'N-a' THEN 'Tarifas'
+                ELSE motivo 
+            END AS motivo,
+            valor,
+            saldos
+        FROM registros
+        WHERE fecha_sistema BETWEEN %s AND %s
+    """
+    return pd.read_sql(query, engine, params=(fecha_inicio, fecha_fin))
 
-        # Limpiar el tree principal
+# ---------- Crear interfaz ----------------------
+def crear_resumen_por_cuenta_y_motivo():
+    ventana = tk.Tk()
+    ventana.title("Resumen por Cuenta y Motivo")
+    ventana.geometry("1000x650")
+
+    # ---------- TÍTULO ----------
+    lbl_titulo = tk.Label(ventana, text="", font=("Arial", 16, "bold"))
+    lbl_titulo.pack(pady=10)
+
+    # ---------- Filtro: Fecha Inicio y Fin + Botones ----------
+    frame_top = tk.Frame(ventana)
+    frame_top.pack()
+
+    tk.Label(frame_top, text="Desde:", font=("Arial", 12)).pack(side="left", padx=5)
+    fecha_inicio = DateEntry(frame_top, width=12, background='darkblue', foreground='white',
+                             borderwidth=2, date_pattern='yyyy-mm-dd')
+    fecha_inicio.set_date(datetime.now())
+    fecha_inicio.pack(side="left")
+
+    tk.Label(frame_top, text="Hasta:", font=("Arial", 12)).pack(side="left", padx=5)
+    fecha_fin = DateEntry(frame_top, width=12, background='darkblue', foreground='white',
+                          borderwidth=2, date_pattern='yyyy-mm-dd')
+    fecha_fin.set_date(datetime.now())
+    fecha_fin.pack(side="left")
+
+    btn_cargar = tk.Button(frame_top, text="Cargar Resumen")
+    btn_cargar.pack(side="left", padx=10, pady=5)
+
+    btn_captura = tk.Button(frame_top, text="📸 Capturar")
+    btn_captura.pack(side="left", padx=10, pady=5)
+
+    # ---------- TREEVIEW ----------
+    tree = ttk.Treeview(ventana, columns=["Cuenta", "Motivo", "Total Valor", "Total Saldos"], show="headings")
+    for col in ["Cuenta", "Motivo", "Total Valor", "Total Saldos"]:
+        tree.heading(col, text=col)
+        tree.column(col, anchor="center", width=200)
+    tree.pack(fill="both", expand=True)
+
+    scrollbar_y = ttk.Scrollbar(ventana, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar_y.set)
+    scrollbar_y.pack(side="right", fill="y")
+
+    # ---------- Estilos ----------
+    style = ttk.Style()
+    style.configure("Treeview.Heading", font=("Arial", 11, "bold"))
+    style.configure("Treeview", font=("Arial", 10), rowheight=25)
+    tree.tag_configure("bold", font=("Arial", 10, "bold"))
+    tree.tag_configure("total_general", background="#d1ffd1", font=("Arial", 11, "bold"))
+
+    # ---------- Acción del botón ----------
+    def cargar_datos():
         tree.delete(*tree.get_children())
+        inicio = fecha_inicio.get_date()
+        fin = fecha_fin.get_date()
+
+        if inicio > fin:
+            messagebox.showwarning("Fechas inválidas", "La fecha de inicio no puede ser posterior a la fecha final.")
+            return
+
+        lbl_titulo.config(text=f"📋 Reporte de valores del {inicio.strftime('%d-%m-%Y')} al {fin.strftime('%d-%m-%Y')}")
 
         try:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
+            df = obtener_datos(inicio, fin)
+        except Exception as e:
+            print(f"Error al obtener datos: {e}")
+            tree.insert("", "end", values=("Error al obtener datos", "", "", ""))
+            return
 
-            # Consulta SQL con rangos de fechas para Fecha_sistema
-            query = """
-            SELECT Id, Fecha_sistema, Fecha_registro, Cedula, Nombre, Placa, 
-                   Valor, Saldos, Tipo, Nombre_cuenta, Referencia, Verificada 
-            FROM registros 
-            WHERE Fecha_sistema BETWEEN ? AND ?
-            """
-            cursor.execute(query, (fecha_sis_inicio, fecha_sis_fin))
-            registros = cursor.fetchall()
+        if df.empty:
+            tree.insert("", "end", values=("Sin datos", "", "", ""))
+            return
 
-            # Verificar si hay registros, si no, mostrar mensaje
-            if not registros:
-                messagebox.showinfo("Sin resultados", "No se encontraron registros en el rango de fechas seleccionado.")
-                return
+        resumen = (
+            df.groupby(["nombre_cuenta", "motivo"])
+            .agg({"valor": "sum", "saldos": "sum"})
+            .reset_index()
+        )
 
-            # Insertar registros en el Treeview con formato de moneda
-            for reg in registros:
-                reg = list(reg)
-                reg[6] = f"${int(reg[6]):,}".replace(",", ".")   # Valor
-                reg[7] = f"${int(reg[7]):,}".replace(",", ".")   # Saldos
-                tree.insert("", "end", values=reg)
+        total_general_valor = 0
+        total_general_saldos = 0
 
-            # Actualizar el Treeview auxiliar
-            actualizar_totales(registros)
+        for cuenta in resumen["nombre_cuenta"].unique():
+            df_cuenta = resumen[resumen["nombre_cuenta"] == cuenta]
+            total_valor_cuenta = df_cuenta["valor"].sum()
+            total_saldos_cuenta = df_cuenta["saldos"].sum()
 
-        except sqlite3.Error as e:
-            messagebox.showerror("Error de base de datos", f"Ocurrió un error: {e}")
+            for _, row in df_cuenta.iterrows():
+                tree.insert("", "end", values=(
+                    cuenta, row["motivo"], f"{row['valor']:,.0f}", f"{row['saldos']:,.0f}"))
 
-        finally:
-            conn.close()
+            tree.insert("", "end", values=(
+                cuenta, "TOTAL", f"{total_valor_cuenta:,.0f}", f"{total_saldos_cuenta:,.0f}"), tags=("bold",))
+            tree.insert("", "end", values=("", "", "", ""))
 
-    def actualizar_totales(registros):
-        # Limpiar el tree auxiliar
-        tree_totales.delete(*tree_totales.get_children())
-        cuentas = {}
+            total_general_valor += total_valor_cuenta
+            total_general_saldos += total_saldos_cuenta
 
-        # Calcular totales agrupados por Nombre_cuenta
-        for reg in registros:
-            nombre_cuenta = reg[9]  # Índice de Nombre_cuenta en la tabla
-            valor = float(reg[6])   # Índice de Valor en la tabla
-            cuentas[nombre_cuenta] = cuentas.get(nombre_cuenta, 0) + valor
+        tree.insert("", "end", values=(
+            "TOTAL GENERAL", "", f"{total_general_valor:,.0f}", f"{total_general_saldos:,.0f}"), tags=("total_general",))
 
-        # Insertar totales en el Treeview auxiliar con formato de moneda
-        for nombre_cuenta, total in cuentas.items():
-            total_formateado = f"${int(total):,}".replace(",", ".")
-            tree_totales.insert("", "end", values=(nombre_cuenta, total_formateado))
+    btn_cargar.config(command=cargar_datos)
 
-    # Ventana secundaria (Toplevel)
-    ventana = tk.Toplevel()  # Cambiado de Tk() a Toplevel(master)
-    ventana.title("Consulta de Registros")
-    ventana.geometry("1000x600")
+    # ---------- Acción del botón de captura al portapapeles ----------
+    def capturar_ventana():
+        ventana.update()
+        x = ventana.winfo_rootx()
+        y = ventana.winfo_rooty()
+        w = ventana.winfo_width()
+        h = ventana.winfo_height()
+        imagen = ImageGrab.grab(bbox=(x, y, x + w, y + h)).convert("RGB")
+        output = io.BytesIO()
+        imagen.save(output, format="BMP")
+        data = output.getvalue()[14:]  # quitar cabecera BMP
 
-    # Frame de formulario
-    frame_form = ttk.Frame(ventana, padding=10)
-    frame_form.pack(fill="x")
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+        win32clipboard.CloseClipboard()
 
-    # Rango de fechas para Fecha_sistema
-    ttk.Label(frame_form, text="Fecha Sistema (Inicio):").grid(row=1, column=0, padx=5, pady=5)
-    date_sis_inicio = DateEntry(frame_form, width=12, date_pattern="yyyy-mm-dd")
-    date_sis_inicio.grid(row=1, column=1, padx=5, pady=5)
+        messagebox.showinfo("Captura", "📸 Captura copiada al portapapeles.")
 
-    ttk.Label(frame_form, text="Fecha Sistema (Fin):").grid(row=1, column=2, padx=5, pady=5)
-    date_sis_fin = DateEntry(frame_form, width=12, date_pattern="yyyy-mm-dd")
-    date_sis_fin.grid(row=1, column=3, padx=5, pady=5)
-
-    # Botón de búsqueda
-    ttk.Button(frame_form, text="Buscar", command=buscar_registros).grid(row=2, column=0, columnspan=4, pady=10)
-
-    # Frame para los Treeviews
-    frame_tree = ttk.Frame(ventana, padding=10)
-    frame_tree.pack(fill="both", expand=True)
-
-    # Treeview principal (ahora incluye Fecha_sistema)
-    columnas = ["Id", "Fecha_sistema", "Fecha_registro", "Cedula", "Nombre", "Placa", 
-                "Valor", "Saldos", "Tipo", "Nombre_cuenta", "Referencia", "Verificada"]
-
-    tree = ttk.Treeview(frame_tree, columns=columnas, show="headings", height=10)
-
-    for col in columnas:
-        tree.heading(col, text=col)
-        tree.column(col, width=100, anchor='center')
-
-    tree.pack(side="left", fill="both", expand=True)
-
-    # Barra de desplazamiento vertical para el primer Treeview
-    scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
-    tree.configure(yscroll=scrollbar.set)
-    scrollbar.pack(side="right", fill="y")
-
-    # Frame para el Treeview auxiliar
-    frame_totales = ttk.Frame(ventana, padding=10)
-    frame_totales.pack(fill="x")
-
-    # Treeview auxiliar para totales
-    tree_totales = ttk.Treeview(frame_totales, columns=["Nombre_cuenta", "Total Valor"], show="headings", height=5)
-
-    # Configuración de encabezados y centrado de columnas
-    tree_totales.heading("Nombre_cuenta", text="Nombre_cuenta")
-    tree_totales.column("Nombre_cuenta", width=150, anchor='center')
-
-    tree_totales.heading("Total Valor", text="Total Valor")
-    tree_totales.column("Total Valor", width=150, anchor='center')
-
-    tree_totales.pack(side="left", fill="both", expand=True)
-
-    # Barra de desplazamiento vertical para el Treeview auxiliar
-    scrollbar_totales = ttk.Scrollbar(frame_totales, orient="vertical", command=tree_totales.yview)
-    tree_totales.configure(yscroll=scrollbar_totales.set)
-    scrollbar_totales.pack(side="right", fill="y")
+    btn_captura.config(command=capturar_ventana)
 
     ventana.mainloop()
 
+
+# ---------- Función para generar reporte de atrasos ----------
 def reporte_atrasos():
     try:
         engine = get_engine()
@@ -1979,6 +2015,7 @@ def reporte_atrasos():
         print(f"Error en reporte_atrasos: {e}")
         return pd.DataFrame()
 
+# ---------- Crear interfaz de atrasos ----------
 def crear_interfaz_atrasos(root_padre):
     global ventana_atrasos
 
@@ -2146,88 +2183,7 @@ def crear_interfaz_atrasos(root_padre):
     btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
     btn_exportar.pack(pady=5)
 
-def crear_ventana_blacklist(data):
-    ventana = tk.Toplevel()
-    ventana.title("Lista Negra de Clientes")
-
-    style = ttk.Style()
-    style.configure("Treeview.Heading", anchor="center")
-    style.configure("Treeview", rowheight=25)
-
-    columnas = ("Nombre", "Placa", "Black_list", "Observaciones")
-    tree = ttk.Treeview(ventana, columns=columnas, show="headings")
-    tree.grid(row=0, column=0, sticky="nsew")
-
-    for col in columnas:
-        tree.heading(col, text=col)
-        tree.column(col, anchor="center", stretch=True)
-
-    scrollbar = ttk.Scrollbar(ventana, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=scrollbar.set)
-    scrollbar.grid(row=0, column=1, sticky="ns")
-
-    tree.tag_configure("marcado", background="lightcoral")
-
-    for clave, valores in data.items():
-        fila = (
-            valores["Nombre"],
-            valores["Placa"],
-            valores["Black_list"],
-            valores.get("Observaciones", "")
-        )
-        tags = ("marcado",) if valores["Black_list"] == "Si" else ()
-        tree.insert("", "end", iid=clave, values=fila, tags=tags)
-
-    def cambiar_estado(event):
-        region = tree.identify_region(event.x, event.y)
-        col = tree.identify_column(event.x)
-        item = tree.identify_row(event.y)
-
-        if not item:
-            return
-
-        col_index = int(col[1:]) - 1
-        columnas_lista = list(columnas)
-
-        if columnas_lista[col_index] == "Black_list":
-            valores = tree.item(item, "values")
-            nuevo_estado = "No" if valores[2] == "Si" else "Si"
-            tree.set(item, "Black_list", nuevo_estado)
-            data[item]["Black_list"] = nuevo_estado
-
-            if nuevo_estado == "Si":
-                tree.item(item, tags=("marcado",))
-            else:
-                tree.item(item, tags=())
-
-        elif columnas_lista[col_index] == "Observaciones":
-            x, y, width, height = tree.bbox(item, col)
-            entry = tk.Entry(ventana)
-            entry.place(x=x, y=y, width=width, height=height)
-            entry.insert(0, tree.set(item, "Observaciones"))
-            entry.focus()
-
-            def guardar(event):
-                nuevo_valor = entry.get()
-                tree.set(item, "Observaciones", nuevo_valor)
-                data[item]["Observaciones"] = nuevo_valor
-                entry.destroy()
-                guardar_json()
-
-            entry.bind("<Return>", guardar)
-            entry.bind("<FocusOut>", lambda e: entry.destroy())
-
-        guardar_json()
-
-    def guardar_json():
-        with open(BLACKLIST_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-    tree.bind("<Double-1>", cambiar_estado)
-
-    ventana.grid_rowconfigure(0, weight=1)
-    ventana.grid_columnconfigure(0, weight=1)
-
+# ---------- Función para ordenar columnas en TreeView ----------
 def ordenar_por_columna(tree, col, descendente):
     datos = [(tree.set(k, col), k) for k in tree.get_children('')]
 
@@ -2241,6 +2197,7 @@ def ordenar_por_columna(tree, col, descendente):
 
     # Cambiar orden para el próximo clic
     tree.heading(col, command=lambda: ordenar_por_columna(tree, col, not descendente))
+
 
 def abrir_gestion_deudas(parent=None):
     ventana = tk.Toplevel(parent) if parent else tk.Tk()
