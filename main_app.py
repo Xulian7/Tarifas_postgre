@@ -343,9 +343,6 @@ btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
 btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(root_padre=ventana))
 btn_mora.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 
-#btn_blacklist = tk.Button(frame_botones, text=" Lista negra", image=cargar_imagen("blacklist"), compound="left", width=ancho_widget, command=gestionar_blacklist)
-#btn_blacklist.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
-
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
 btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
@@ -382,6 +379,7 @@ subframe_datos.columnconfigure(0, weight=0)  # Label
 subframe_datos.columnconfigure(1, weight=1)  # Entry (para que se estire si hay espacio)
 # Elementos nuevos dentro del sub-frame
 
+# Etiqueta para mostrar el estado de conexión
 def verificar_conexion():
     try:
         with engine.connect() as conn:
@@ -398,6 +396,7 @@ def actualizar_estado():
         estado_label.config(text="🔴 Sin conexión", fg="red")
     ventana.after(10000, actualizar_estado)  # Reintenta cada 10 segundos
 
+# Función para filtrar los datos del Treeview por referencia
 def filtrar_por_referencia(event):
     global datos_tree_original
 
@@ -433,6 +432,7 @@ estado_label.grid(row=0, column=2 ,padx=10, pady=10)
 
 entry_codigo.bind("<Return>", filtrar_por_referencia)
 
+# Función para ordenar el Treeview por una columna específica
 def sort_treeview(column, reverse):
     """Ordena el Treeview por la columna seleccionada."""
     data = [(tree.set(item, column), item) for item in tree.get_children()]
@@ -482,6 +482,7 @@ ventana.grid_columnconfigure(0, weight=1)
 tree_frame.grid_rowconfigure(0, weight=1)
 tree_frame.grid_columnconfigure(0, weight=1)
 
+# Función para manejar el doble clic en un item del Treeview
 def on_double_click(event, tree):
     # Obtener el item seleccionado
     selected_item = tree.selection()

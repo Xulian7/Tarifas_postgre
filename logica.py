@@ -1,9 +1,7 @@
 import pandas as pd
 import tkinter as tk
 import tkinter.font as tkFont
-from tkinter import font
 from tkinter import filedialog, messagebox, ttk
-import sqlite3
 from dotenv import load_dotenv
 import os
 from datetime import datetime, timedelta, time
@@ -19,27 +17,19 @@ from openpyxl import Workbook
 import ctypes
 from tkinter import Toplevel
 import psycopg2
-from sqlalchemy import create_engine
-from sqlalchemy import select, case, and_, or_
-from conexion import engine, clientes as tabla_clientes, registros as tabla_registros, propietario as tabla_propietario
+from sqlalchemy import select, insert, update, delete, case, func, text, and_, or_
+from sqlalchemy.orm import Session
+from conexion import engine
+from conexion import clientes as tabla_clientes, registros as tabla_registros, propietario as tabla_propietario
+from conexion import cuentas as tabla_cuentas, otras_deudas as tabla_otras_deudas
 
 JSON_PATH = 'diccionarios/columnas.json'
 XLSX_PATH = 'diccionarios/estructura.xlsx'
+
 # Establecer configuraciones locales - español
 locale.setlocale(locale.LC_ALL, 'es_CO.utf8')
 ventana_clientes = None  # Variable global dentro del módulo
 ventana_atrasos = None  # Variable global para evitar duplicados
-
-# ---------- Conexiones psycopg2 ----------
-def get_connection():
-    return psycopg2.connect(
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT")
-    )
-
 
 # ---------- Cargar datos desde PostgreSQL ----------
 def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada):
@@ -119,13 +109,13 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo cargar los datos desde PostgreSQL: {e}")
 
-
-
 # ---------- Agregar registro a la base de datos ----------
 def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
                      entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
                      listbox_sugerencias):
-    
+
+    from sqlalchemy import insert, select, and_
+
     # Obtener valores
     cedula = entry_cedula.get().strip()
     nombre = entry_nombre.get().strip()
@@ -137,10 +127,10 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
     fecha = entry_fecha.get().strip()
     tipo = combo_tipo.get().strip()
     nequi = combo_nequi.get().strip()
-    verificada = "No"  # 🔒 Valor fijo
+    verificada = "No"
     motivo = combo_motivo.get().strip()
 
-    # Validación
+    # Validación de campos obligatorios
     campos_faltantes = []
     if not cedula: campos_faltantes.append("Cédula")
     if not nombre: campos_faltantes.append("Nombre")
@@ -148,9 +138,7 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
     if not valor: campos_faltantes.append("Valor")
     if not saldos: campos_faltantes.append("Saldos")
     if not fecha_hoy: campos_faltantes.append("Fecha de hoy")
-    if not fecha: campos_faltantes.append("Fecha de registro")
     if not tipo: campos_faltantes.append("Tipo")
-    if not verificada: campos_faltantes.append("Verificada")
     if tipo.lower() not in ["efectivo", "ajuste p/p"]:
         if not referencia: campos_faltantes.append("Referencia")
         if not nequi: campos_faltantes.append("Nequi")
@@ -161,86 +149,80 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
         return
 
     try:
-        # ⚙️ Conexión PostgreSQL
-        conn = get_connection()
-        cursor = conn.cursor()
+        valor = float(valor)
+        saldos = float(saldos) if saldos else 0.0
+    except ValueError:
+        messagebox.showerror("Error", "Valor y saldos deben ser numéricos.")
+        return
 
-        # Validar referencia duplicada
-        if referencia:
-            cursor.execute("SELECT Referencia, Cedula, Nombre FROM registros WHERE Referencia = %s", (referencia,))
-            registro_existente = cursor.fetchone()
-            if registro_existente:
-                ref, ced, nom = registro_existente
-                messagebox.showwarning("Referencia duplicada", 
-                    f"El registro con referencia '{ref}' ya existe.\n"
-                    f"Cédula: {ced}\nNombre: {nom}\n\nNo se guardará el nuevo registro.")
-                conn.close()
+    fecha_hoy_bd = convertir_fecha(fecha_hoy)
+    if not fecha_hoy_bd:
+        return
+
+    # Si tipo es "efectivo", se fuerza la fecha_registro = fecha_hoy
+    if tipo.lower() == "efectivo":
+        fecha_bd = fecha_hoy_bd
+    else:
+        fecha_bd = convertir_fecha(fecha)
+        if not fecha_bd:
+            return
+
+    try:
+        with engine.begin() as conn:
+            # Validar referencia duplicada
+            if referencia:
+                ref_check = select(tabla_registros.c.referencia).where(tabla_registros.c.referencia == referencia)
+                if conn.execute(ref_check).first():
+                    messagebox.showwarning("Referencia duplicada", f"La referencia '{referencia}' ya existe.")
+                    return
+
+            # Validar combinación única
+            check_cliente = select(tabla_clientes.c.cedula).where(
+                and_(
+                    tabla_clientes.c.cedula == cedula,
+                    tabla_clientes.c.nombre == nombre,
+                    tabla_clientes.c.placa == placa
+                )
+            )
+            if conn.execute(check_cliente).rowcount != 1:
+                messagebox.showerror("Error", "La combinación de cédula, nombre y placa no es única o no existe.")
                 return
 
-        # Validar combinación única
-        cursor.execute("SELECT COUNT(*) FROM clientes WHERE Cedula = %s AND Nombre = %s AND Placa = %s", (cedula, nombre, placa))
-        count = cursor.fetchone()[0]
-        if count != 1:
-            messagebox.showerror("Error", "La combinación de cédula, nombre y placa no es única o no existe en la base de datos.")
-            conn.close()
-            return
+            # Confirmar inserción
+            confirmar = messagebox.askyesno("Confirmar", "¿Deseas grabar este registro?")
+            if not confirmar:
+                messagebox.showinfo("Cancelado", "La operación fue cancelada.")
+                return
 
-        try:
-            valor = float(valor)
-        except ValueError:
-            messagebox.showerror("Error", "El monto debe ser numérico.")
-            conn.close()
-            return
-
-        if not saldos:
-            saldos = "0"
-        try:
-            saldos = float(saldos)
-        except ValueError:
-            messagebox.showerror("Error", "El campo 'Saldos' debe ser numérico.")
-            conn.close()
-            return
-
-        fecha_hoy_bd = convertir_fecha(fecha_hoy)
-        fecha_bd = convertir_fecha(fecha)
-
-        if fecha_hoy_bd is None or fecha_bd is None:
-            conn.close()
-            return
-
-        # ⚠️ Sobrescribir fecha_registro si tipo es efectivo
-        if tipo.lower() == "efectivo":
-            fecha_bd = fecha_hoy_bd
-
-
-        confirmar = messagebox.askyesno("Confirmar", "¿Deseas grabar este registro?")
-        if confirmar:
-            cursor.execute("""
-                INSERT INTO registros (
-                    Fecha_sistema, Fecha_registro, Cedula, Nombre, Placa, Valor, Saldos, Motivo, Tipo, Nombre_cuenta, Referencia, Verificada
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s)
-            """, (
-                fecha_hoy_bd, fecha_bd, cedula, nombre, placa, valor, saldos, motivo,
-                tipo, nequi, referencia, verificada
-            ))
-            conn.commit()
-
-            mostrar_msgbox_exito(
-                entry_cedula,
-                lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo,
-                    combo_nequi, combo_verificada, listbox_sugerencias, tree),
-                lambda: limpiar_parcial(entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
-                    listbox_sugerencias, tree)
+            # Insertar el registro
+            insertar = insert(tabla_registros).values(
+                fecha_sistema=fecha_hoy_bd,
+                fecha_registro=fecha_bd,
+                cedula=cedula,
+                nombre=nombre,
+                placa=placa,
+                valor=valor,
+                saldos=saldos,
+                motivo=motivo,
+                tipo=tipo,
+                nombre_cuenta=nequi,
+                referencia=referencia,
+                verificada=verificada
             )
-            
-        else:
-            messagebox.showinfo("Cancelado", "La operación fue cancelada.")
-        conn.close()
+            conn.execute(insertar)
 
-    except psycopg2.Error as e:
-        messagebox.showerror("Error", f"Error en base de datos: {e}")
-        if conn:
-            conn.close()
+        mostrar_msgbox_exito(
+            entry_cedula,
+            lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos,
+                                       combo_motivo, entry_referencia, entry_fecha, combo_tipo,
+                                       combo_nequi, combo_verificada, listbox_sugerencias, tree),
+            lambda: limpiar_parcial(entry_monto, entry_saldos, combo_motivo, entry_referencia,
+                                    entry_fecha, combo_tipo, combo_nequi, combo_verificada,
+                                    listbox_sugerencias, tree)
+        )
+
+    except Exception as e:
+        messagebox.showerror("Error", f"Error en base de datos:\n{e}")
 
 # ---------- Mostrar mensaje de éxito en un MsgBox ----------
 def mostrar_msgbox_exito(entry_cedula, limpiar_funcion, parcial_funcion):
@@ -314,21 +296,14 @@ combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree):
 # ---------- Cargar opciones de Nequi desde la base de datos ----------
 def cargar_nequi_opciones():
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
+        with engine.connect() as conn:
+            stmt = select(tabla_cuentas.c.nombre_cuenta)
+            rows = conn.execute(stmt).fetchall()
 
-        cursor.execute("SELECT nombre_cuenta FROM cuentas")
-        rows = cursor.fetchall()
-
-        nequi_opciones = [row[0] for row in rows]
-
-        cursor.close()
-        conn.close()
-
-        return nequi_opciones
+            return [row[0] for row in rows]
 
     except Exception as e:
-        print(f"Error al cargar los datos: {e}")
+        print(f"💥 Error al cargar los datos de Nequi: {e}")
         return []
 
 # ---------- Convertir fecha de string a objeto date ----------
@@ -355,26 +330,38 @@ def ajustar_columnas(tree):
 def obtener_datos_clientes():
     """Obtiene los datos de la tabla clientes desde la base de datos PostgreSQL y formatea Capital y Fecha_inicio."""
     try:
-        conexion = get_connection()
-        cursor = conexion.cursor()
-        
-        # Consulta SQL
-        query = """
-            SELECT 
-                c.cedula, c.nombre, c.nacionalidad, c.telefono, c.direccion, 
-                c.placa, p.modelo, p.tarjeta_propiedad, 
-                c.fecha_inicio, c.fecha_final, c.tipo_contrato, c.valor_cuota, 
-                c.estado, c.otras_deudas, c.visitador, c.referencia, c.telefono_ref
-            FROM clientes c 
-            LEFT JOIN propietario p ON c.placa = p.placa;
-        """
+        stmt = (
+            select(
+                tabla_clientes.c.cedula,
+                tabla_clientes.c.nombre,
+                tabla_clientes.c.nacionalidad,
+                tabla_clientes.c.telefono,
+                tabla_clientes.c.direccion,
+                tabla_clientes.c.placa,
+                tabla_propietario.c.modelo,
+                tabla_propietario.c.tarjeta_propiedad,
+                tabla_clientes.c.fecha_inicio,
+                tabla_clientes.c.fecha_final,
+                tabla_clientes.c.tipo_contrato,
+                tabla_clientes.c.valor_cuota,
+                tabla_clientes.c.estado,
+                tabla_clientes.c.otras_deudas,
+                tabla_clientes.c.visitador,
+                tabla_clientes.c.referencia,
+                tabla_clientes.c.telefono_ref
+            )
+            .select_from(
+                tabla_clientes.outerjoin(
+                    tabla_propietario, tabla_clientes.c.placa == tabla_propietario.c.placa
+                )
+            )
+        )
 
-        cursor.execute(query)
-        datos = cursor.fetchall()
+        with engine.connect() as conn:
+            result = conn.execute(stmt).fetchall()
 
-        # Formatear los datos
         datos_formateados = []
-        for fila in datos:
+        for fila in result:
             (
                 cedula, nombre, nacionalidad, telefono, direccion, 
                 placa, modelo, tarjeta_propiedad, fecha_inicio, fecha_final, 
@@ -382,13 +369,12 @@ def obtener_datos_clientes():
                 visitador, referencia, telefono_ref
             ) = fila
 
-            # Formatear la fecha si existe
             if fecha_inicio:
                 try:
                     fecha_inicio = fecha_inicio.strftime("%d-%m-%Y")
                 except Exception:
                     fecha_inicio = "Formato Inválido"
-            
+
             datos_formateados.append((
                 cedula, nombre, nacionalidad, telefono, direccion, 
                 placa, modelo, tarjeta_propiedad, fecha_inicio, fecha_final, 
@@ -398,14 +384,9 @@ def obtener_datos_clientes():
 
         return datos_formateados
 
-    except psycopg2.Error as e:
+    except Exception as e:
         print(f"Error al obtener datos de clientes: {e}")
         return []
-
-    finally:
-        if conexion:
-            cursor.close()
-            conexion.close()
 
 # ---------- Abrir ventana de clientes ----------
 def abrir_ventana_clientes():
@@ -510,21 +491,20 @@ def abrir_ventana_clientes():
             if filtro in fila[1].lower():
                 tree.insert("", "end", values=fila)
     
+    # Función para consultar datos del vehículo
     def consultar_datos_vehiculo(*args):
         placa = placa_var.get()
         if not placa:
             return
 
-        # Conectamos a la base de datos de PostgreSQL
-        conn = get_connection()
-        cursor = conn.cursor()
-
         try:
-            cursor.execute(
-                "SELECT modelo, tarjeta_propiedad FROM propietario WHERE placa = %s",
-                (placa,)
-            )
-            resultado = cursor.fetchone()
+            stmt = select(
+                tabla_propietario.c.modelo,
+                tabla_propietario.c.tarjeta_propiedad
+            ).where(tabla_propietario.c.placa == placa)
+
+            with engine.connect() as conn:
+                resultado = conn.execute(stmt).fetchone()
 
             if resultado:
                 modelo, tarjeta = resultado
@@ -542,9 +522,6 @@ def abrir_ventana_clientes():
         except Exception as e:
             print(f"Error al consultar el vehículo: {e}")
 
-        finally:
-            cursor.close()
-            conn.close()
 
     entries["Nombre"] = ttk.Entry(frame_form, textvariable=nombre_var, width=30)
     entries["Nombre"].grid(row=0, column=3, padx=5, pady=5, sticky="w")
@@ -640,82 +617,97 @@ def abrir_ventana_clientes():
     def registrar_cliente():
         # Obtener valores de los campos
         valores = [
-            entries["Cédula"].get().strip(), 
-            entries["Nombre"].get().strip(), 
-            entries["Nacionalidad"].get().strip(), 
-            entries["Teléfono"].get().strip(), 
-            entries["Dirección"].get().strip(), 
-            entries["Placa"].get().strip(), 
-            convertir_fecha_formato_sqlite(entries["Fecha Inicio"].get().strip()), 
-            entries["Fecha Final"].get().strip(), 
-            entries["Tipo Contrato"].get().strip(), 
-            entries["Valor Cuota"].get().strip(), 
-            combo_estado.get().strip(), 
-            entries["Otras deudas"].get().strip(), 
-            entries["Visitador"].get().strip(), 
-            entries["Referencia"].get().strip(), 
+            entries["Cédula"].get().strip(),
+            entries["Nombre"].get().strip(),
+            entries["Nacionalidad"].get().strip(),
+            entries["Teléfono"].get().strip(),
+            entries["Dirección"].get().strip(),
+            entries["Placa"].get().strip(),
+            convertir_fecha_formato_sqlite(entries["Fecha Inicio"].get().strip()),
+            entries["Fecha Final"].get().strip(),
+            entries["Tipo Contrato"].get().strip(),
+            entries["Valor Cuota"].get().strip(),
+            combo_estado.get().strip(),
+            entries["Otras deudas"].get().strip(),
+            entries["Visitador"].get().strip(),
+            entries["Referencia"].get().strip(),
             entries["Telefono Ref"].get().strip()
         ]
 
-        # Verificar si hay campos vacíos
+        # Validar campos vacíos
         if '' in valores:
             messagebox.showerror("Error", "Todos los campos deben estar llenos.")
             ventana_clientes.focus_force()
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
         try:
-            # Validar que la placa esté registrada en la tabla propietario
-            cursor.execute("SELECT Placa FROM propietario WHERE Placa = %s LIMIT 1", (valores[5],))
-            if not cursor.fetchone():
-                messagebox.showwarning("Advertencia", f"La Placa {valores[5]} no está registrada en la base de datos de propietarios.")
-                return
+            with engine.begin() as conn:
+                # Validar existencia de la placa en propietario
+                stmt_prop = select(tabla_propietario.c.placa).where(tabla_propietario.c.placa == valores[5]).limit(1)
+                resultado = conn.execute(stmt_prop).fetchone()
+                if not resultado:
+                    messagebox.showwarning("Advertencia", f"La Placa {valores[5]} no está registrada en la base de datos de propietarios.")
+                    return
 
-            # Validar que el cliente o la placa no esté ya registrada
-            cursor.execute("SELECT Cedula, Placa FROM clientes WHERE Cedula = %s OR Placa = %s LIMIT 1", (valores[0], valores[5],))
-            resultado = cursor.fetchone()
+                # Validar existencia previa del cliente o placa
+                stmt_check = select(
+                    tabla_clientes.c.cedula,
+                    tabla_clientes.c.placa
+                ).where(
+                    (tabla_clientes.c.cedula == valores[0]) | (tabla_clientes.c.placa == valores[5])
+                ).limit(1)
 
-            if resultado:
-                mensaje = "No se puede registrar el cliente porque:\n"
-                if resultado[0] == valores[0]:
-                    mensaje += f"- La Cédula {resultado[0]} ya está registrada.\n"
-                if resultado[1] == valores[5]:
-                    mensaje += f"- La Placa {resultado[1]} ya está asignada a otro cliente.\n"
-                messagebox.showwarning("Advertencia", mensaje)
-            else:
+                resultado = conn.execute(stmt_check).fetchone()
+
+                if resultado:
+                    mensaje = "No se puede registrar el cliente porque:\n"
+                    if resultado[0] == valores[0]:
+                        mensaje += f"- La Cédula {resultado[0]} ya está registrada.\n"
+                    if resultado[1] == valores[5]:
+                        mensaje += f"- La Placa {resultado[1]} ya está asignada a otro cliente.\n"
+                    messagebox.showwarning("Advertencia", mensaje)
+                    return
+
                 # Insertar nuevo cliente
-                cursor.execute("""
-                    INSERT INTO clientes (Cedula, Nombre, Nacionalidad, Telefono, Direccion, Placa, Fecha_inicio, Fecha_final, Tipo_contrato, Valor_cuota, Estado, Otras_deudas, Visitador, Referencia, Telefono_ref)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, valores)
-                conn.commit()
+                conn.execute(insert(tabla_clientes), {
+                    "cedula": valores[0],
+                    "nombre": valores[1],
+                    "nacionalidad": valores[2],
+                    "telefono": valores[3],
+                    "direccion": valores[4],
+                    "placa": valores[5],
+                    "fecha_inicio": valores[6],
+                    "fecha_final": valores[7],
+                    "tipo_contrato": valores[8],
+                    "valor_cuota": valores[9],
+                    "estado": valores[10],
+                    "otras_deudas": valores[11],
+                    "visitador": valores[12],
+                    "referencia": valores[13],
+                    "telefono_ref": valores[14]
+                })
 
                 # Insertar deuda cuota inicial
-                fecha_deuda = valores[6]
-                cursor.execute("""
-                    INSERT INTO otras_deudas (Cedula, Placa, Fecha_deuda, Descripcion, Valor)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (valores[0], valores[5], fecha_deuda, "Cuota Inicial", valores[11]))
+                conn.execute(insert(tabla_otras_deudas), {
+                    "cedula": valores[0],
+                    "placa": valores[5],
+                    "fecha_deuda": valores[6],
+                    "descripcion": "Cuota Inicial",
+                    "valor": valores[11]
+                })
 
-                conn.commit()
-
-                messagebox.showinfo("Éxito", "Cliente guardado correctamente.")
-                ventana_clientes.focus_force()
+            messagebox.showinfo("Éxito", "Cliente guardado correctamente.")
+            ventana_clientes.focus_force()
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar el cliente.\n{e}")
-
-        finally:
-            cursor.close()
-            conn.close()
+            return
 
         # 🔹 ACTUALIZAR EL TREEVIEW
-        tree.delete(*tree.get_children())  # Limpiar datos actuales en el Treeview
+        tree.delete(*tree.get_children())
         for fila in obtener_datos_clientes():
             tree.insert("", "end", values=fila)
-        ajustar_columnas(tree)  # Ajustar el ancho de las columnas automáticamente
+        ajustar_columnas(tree)
 
         # 🔹 ACTUALIZAR datos_originales
         global datos_originales
@@ -723,113 +715,126 @@ def abrir_ventana_clientes():
         ventana_clientes.focus_force()
 
     def actualizar_cliente():
-        # Obtener valores de los campos
+        # Obtener valores del formulario
         valores = {
-            "Cedula": entries["Cédula"].get().strip(), 
-            "Nombre": entries["Nombre"].get().strip(), 
-            "Nacionalidad": entries["Nacionalidad"].get().strip(), 
-            "Telefono": entries["Teléfono"].get().strip(), 
-            "Direccion": entries["Dirección"].get().strip(), 
-            "Placa": entries["Placa"].get().strip(), 
-            "Fecha_inicio": convertir_fecha_formato_sqlite(entries["Fecha Inicio"].get().strip()), 
-            "Fecha_final": entries["Fecha Final"].get().strip(), 
-            "Tipo_contrato": entries["Tipo Contrato"].get().strip(), 
-            "Valor_cuota": entries["Valor Cuota"].get().strip(), 
-            "Estado": combo_estado.get().strip(), 
-            "Otras_deudas": entries["Otras deudas"].get().strip(), 
-            "Visitador": entries["Visitador"].get().strip(), 
-            "Referencia": entries["Referencia"].get().strip(), 
+            "Cedula": entries["Cédula"].get().strip(),
+            "Nombre": entries["Nombre"].get().strip(),
+            "Nacionalidad": entries["Nacionalidad"].get().strip(),
+            "Telefono": entries["Teléfono"].get().strip(),
+            "Direccion": entries["Dirección"].get().strip(),
+            "Placa": entries["Placa"].get().strip(),
+            "Fecha_inicio": convertir_fecha_formato_sqlite(entries["Fecha Inicio"].get().strip()),
+            "Fecha_final": entries["Fecha Final"].get().strip(),
+            "Tipo_contrato": entries["Tipo Contrato"].get().strip(),
+            "Valor_cuota": entries["Valor Cuota"].get().strip(),
+            "Estado": combo_estado.get().strip(),
+            "Otras_deudas": entries["Otras deudas"].get().strip(),
+            "Visitador": entries["Visitador"].get().strip(),
+            "Referencia": entries["Referencia"].get().strip(),
             "Telefono_ref": entries["Telefono Ref"].get().strip()
         }
 
-        # Verificar si hay campos vacíos
+        # Validación de campos vacíos
         if '' in valores.values():
             messagebox.showerror("Error", "Todos los campos deben estar llenos.")
             ventana_clientes.focus_force()
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
         try:
-            # Obtener estado y placa actuales del cliente
-            cursor.execute("SELECT Estado, Placa FROM clientes WHERE Cedula = %s LIMIT 1", (valores["Cedula"],))
-            datos_actuales = cursor.fetchone()
-
-            if not datos_actuales:
-                messagebox.showerror("Error", f"No existe un cliente con la Cédula {valores['Cedula']}.")
-                return
-
-            estado_anterior, placa_actual = datos_actuales
-
-            print(f"Estado anterior: {estado_anterior}, Placa actual: {placa_actual}")
-
-            # Validaciones específicas para cambio de estado
-            placa_actual = placa_actual.strip()
-            if estado_anterior == "activo" and valores["Estado"] == "inactivo":
-                if "**" not in placa_actual:
-                    valores["Placa"] = placa_actual + " **"
-                    print(f"Placa actualizada a INACTIVO: {valores['Placa']}")
-
-            elif estado_anterior == "inactivo" and valores["Estado"] == "activo":
-                valores["Placa"] = placa_actual.replace(" **", "").strip()
-                print(f"Placa actualizada a ACTIVO: {valores['Placa']}")
-
-                # Validar que la placa esté registrada en propietarios
-                cursor.execute("SELECT 1 FROM propietario WHERE Placa = %s LIMIT 1", (valores["Placa"],))
-                if not cursor.fetchone():
-                    messagebox.showerror("Error", f"La Placa '{valores['Placa']}' no está registrada en la base de datos de propietarios.")
-                    return
-
-                # Validar que la placa no esté ya asignada a otro cliente
-                cursor.execute("SELECT 1 FROM clientes WHERE Placa = %s AND Cedula <> %s LIMIT 1",
-                                (valores["Placa"], valores["Cedula"]))
-                if cursor.fetchone():
-                    messagebox.showerror("Error", f"La Placa '{valores['Placa']}' ya está asignada a otro cliente.")
-                    return
-
-            # Actualizar cliente
-            cursor.execute("""
-                    UPDATE clientes
-                    SET Nombre = %s, Nacionalidad = %s, Telefono = %s, Direccion = %s, Placa = %s, 
-                        Fecha_inicio = %s, Fecha_final = %s, Tipo_contrato = %s, Valor_cuota = %s, Estado = %s, 
-                        Otras_deudas = %s, Visitador = %s, Referencia = %s, Telefono_ref = %s
-                    WHERE Cedula = %s
-                """, (
-                    valores["Nombre"], valores["Nacionalidad"], valores["Telefono"], valores["Direccion"],
-                    valores["Placa"], valores["Fecha_inicio"], valores["Fecha_final"], valores["Tipo_contrato"],
-                    valores["Valor_cuota"], valores["Estado"], valores["Otras_deudas"],
-                    valores["Visitador"], valores["Referencia"], valores["Telefono_ref"],
-                    valores["Cedula"]
+            with engine.begin() as conn:
+                # Obtener estado y placa actuales del cliente
+                stmt_check = (
+                    select(
+                        tabla_clientes.c.estado,
+                        tabla_clientes.c.placa
+                    )
+                    .where(tabla_clientes.c.cedula == valores["Cedula"])
+                    .limit(1)
                 )
-            )
+                resultado = conn.execute(stmt_check).fetchone()
 
-            # Actualizar registros relacionados
-            cursor.execute("""
-                UPDATE registros
-                SET Nombre = %s, Placa = %s
-                WHERE Cedula = %s
-            """, (valores["Nombre"], valores["Placa"], valores["Cedula"]))
+                if not resultado:
+                    messagebox.showerror("Error", f"No existe un cliente con la Cédula {valores['Cedula']}.")
+                    return
 
-            conn.commit()
+                estado_anterior, placa_actual = resultado
+                placa_actual = placa_actual.strip()
+
+                print(f"Estado anterior: {estado_anterior}, Placa actual: {placa_actual}")
+
+                # Lógica para cambiar placa según cambio de estado
+                if estado_anterior == "activo" and valores["Estado"] == "inactivo":
+                    if "**" not in placa_actual:
+                        valores["Placa"] = placa_actual + " **"
+                        print(f"Placa actualizada a INACTIVO: {valores['Placa']}")
+
+                elif estado_anterior == "inactivo" and valores["Estado"] == "activo":
+                    valores["Placa"] = placa_actual.replace(" **", "").strip()
+                    print(f"Placa actualizada a ACTIVO: {valores['Placa']}")
+
+                    # Validar que la placa esté en propietarios
+                    stmt_prop = select(tabla_propietario.c.placa).where(tabla_propietario.c.placa == valores["Placa"]).limit(1)
+                    if not conn.execute(stmt_prop).fetchone():
+                        messagebox.showerror("Error", f"La Placa '{valores['Placa']}' no está registrada en propietarios.")
+                        return
+
+                    # Validar que la placa no esté ya asignada a otro cliente
+                    stmt_placa = select(tabla_clientes.c.placa).where(
+                        (tabla_clientes.c.placa == valores["Placa"]) &
+                        (tabla_clientes.c.cedula != valores["Cedula"])
+                    ).limit(1)
+                    if conn.execute(stmt_placa).fetchone():
+                        messagebox.showerror("Error", f"La Placa '{valores['Placa']}' ya está asignada a otro cliente.")
+                        return
+
+                # Actualizar tabla clientes
+                stmt_update_cliente = (
+                    update(tabla_clientes)
+                    .where(tabla_clientes.c.cedula == valores["Cedula"])
+                    .values(
+                        nombre=valores["Nombre"],
+                        nacionalidad=valores["Nacionalidad"],
+                        telefono=valores["Telefono"],
+                        direccion=valores["Direccion"],
+                        placa=valores["Placa"],
+                        fecha_inicio=valores["Fecha_inicio"],
+                        fecha_final=valores["Fecha_final"],
+                        tipo_contrato=valores["Tipo_contrato"],
+                        valor_cuota=valores["Valor_cuota"],
+                        estado=valores["Estado"],
+                        otras_deudas=valores["Otras_deudas"],
+                        visitador=valores["Visitador"],
+                        referencia=valores["Referencia"],
+                        telefono_ref=valores["Telefono_ref"]
+                    )
+                )
+                conn.execute(stmt_update_cliente)
+
+                # Actualizar registros relacionados
+                stmt_update_registros = (
+                    update(tabla_registros)
+                    .where(tabla_registros.c.cedula == valores["Cedula"])
+                    .values(
+                        nombre=valores["Nombre"],
+                        placa=valores["Placa"]
+                    )
+                )
+                conn.execute(stmt_update_registros)
+
             messagebox.showinfo("Éxito", "Cliente actualizado correctamente.")
             ventana_clientes.focus_force()
 
         except Exception as e:
-            conn.rollback()
             messagebox.showerror("Error", f"No se pudo actualizar el cliente.\n{e}")
+            return
 
-        finally:
-            cursor.close()
-            conn.close()
-
-        # 🔹 ACTUALIZAR EL TREEVIEW
-        tree.delete(*tree.get_children())  # Limpiar datos actuales en el Treeview
+        # 🔹 Actualizar TreeView
+        tree.delete(*tree.get_children())
         for fila in obtener_datos_clientes():
             tree.insert("", "end", values=fila)
-        ajustar_columnas(tree)  # Ajustar el ancho de las columnas automáticamente
+        ajustar_columnas(tree)
 
-        # 🔹 ACTUALIZAR datos_originales
+        # 🔹 Actualizar datos_originales
         global datos_originales
         datos_originales = [tree.item(item)["values"] for item in tree.get_children()]
         ventana_clientes.focus_force()
@@ -920,35 +925,26 @@ def cerrar_ventana_clientes():
 
 # ---------- Abrir ventana de gestión de cuentas ----------
 def abrir_ventana_cuentas():
-    # Crear ventana
     ventana_cuentas = tk.Toplevel()
     ventana_cuentas.title("Gestión de Cuentas")
     ventana_cuentas.geometry("600x400")
     ventana_cuentas.rowconfigure(0, weight=1)
     ventana_cuentas.columnconfigure(0, weight=1)
 
-    # Establecer un icono (si existe)
     icono_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'inicio.ico')
     if os.path.exists(icono_path):
         ventana_cuentas.iconbitmap(icono_path)
 
-
-    # Frame superior para la tabla
     frame_tabla = ttk.Frame(ventana_cuentas)
     frame_tabla.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-    # Permitir expansión dentro del frame
     frame_tabla.rowconfigure(0, weight=1)
     frame_tabla.columnconfigure(0, weight=1)
 
-    # Crear Treeview con scrollbar
     columnas = ("ID", "Nombre cuenta", "Llave")
     tree = ttk.Treeview(frame_tabla, columns=columnas, show="headings")
-
-    # Scrollbar vertical
     scrollbar = ttk.Scrollbar(frame_tabla, orient="vertical", command=tree.yview)
     tree.configure(yscroll=scrollbar.set)
 
-    # Configuración de columnas
     for col in columnas:
         tree.heading(col, text=col, anchor="center")
         tree.column(col, anchor="center", width=150, stretch=True)
@@ -956,28 +952,23 @@ def abrir_ventana_cuentas():
     tree.grid(row=0, column=0, sticky="nsew")
     scrollbar.grid(row=0, column=1, sticky="ns")
 
-   # Función para cargar datos desde la base de datos
     def cargar_datos():
         try:
-            # Limpiar el Treeview antes de recargar los datos
-            for item in tree.get_children():
-                tree.delete(item)
+            tree.delete(*tree.get_children())
+            with engine.connect() as conn:
+                rows = conn.execute(select(
+                    tabla_cuentas.c.id,
+                    tabla_cuentas.c.nombre_cuenta,
+                    tabla_cuentas.c.llave
+                )).fetchall()
 
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, nombre_cuenta, llave FROM cuentas")
-            rows = cursor.fetchall()
-            conn.close()
-
-            for row in rows:
-                tree.insert("", "end", values=row)
+                for row in rows:
+                    tree.insert("", "end", values=row)
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los datos: {e}")
             ventana_cuentas.focus_force()
 
-
-    # Función para crear una nueva cuenta
     def crear_cuenta():
         titular_valor = entry_titular.get().strip()
         llave_valor = entry_llave.get().strip()
@@ -988,44 +979,35 @@ def abrir_ventana_cuentas():
             return
 
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
+            with engine.begin() as conn:
+                # Verificar existencia
+                stmt_check = select(tabla_cuentas).where(
+                    (tabla_cuentas.c.nombre_cuenta == titular_valor) &
+                    (tabla_cuentas.c.llave == llave_valor)
+                )
+                if conn.execute(stmt_check).fetchone():
+                    messagebox.showwarning("Advertencia", "La combinación Titular - Llave ya existe.")
+                    entry_llave.focus_force()
+                    return
 
-            # Verificar si la combinación Entidad - Llave ya existe
-            cursor.execute(
-                "SELECT COUNT(*) FROM cuentas WHERE nombre_cuenta = %s AND llave = %s",
-                (titular_valor, llave_valor)
-            )
-            if cursor.fetchone()[0] > 0:
-                messagebox.showwarning("Advertencia", "La combinación Titular - Llave ya existe en la base de datos.")
-                entry_llave.focus_force()
-                return
+                # Insertar nueva cuenta
+                result = conn.execute(
+                    insert(tabla_cuentas).returning(tabla_cuentas.c.id),
+                    {"nombre_cuenta": titular_valor, "llave": llave_valor}
+                )
+                new_id = result.scalar()
 
-            # Insertar la nueva cuenta
-            cursor.execute(
-                "INSERT INTO cuentas (nombre_cuenta, llave) VALUES (%s, %s) RETURNING id",
-                (titular_valor, llave_valor)
-            )
-            new_id = cursor.fetchone()[0]
-            conn.commit()
+                tree.insert("", "end", values=(new_id, titular_valor, llave_valor))
+                entry_titular.delete(0, tk.END)
+                entry_llave.delete(0, tk.END)
 
-            # Insertar en Treeview y limpiar entradas
-            tree.insert("", "end", values=(new_id, titular_valor, llave_valor))
-            entry_titular.delete(0, tk.END)
-            entry_llave.delete(0, tk.END)
-
-            messagebox.showinfo("Éxito", "Cuenta creada exitosamente")
-            ventana_cuentas.focus_force()
+                messagebox.showinfo("Éxito", "Cuenta creada exitosamente")
+                ventana_cuentas.focus_force()
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo crear la cuenta: {e}")
+            ventana_cuentas.focus_force()
 
-        finally:
-            if conn:
-                conn.close()
-
-
-    # Función para eliminar una cuenta
     def eliminar_cuenta():
         selected_item = tree.selection()
         if not selected_item:
@@ -1034,74 +1016,58 @@ def abrir_ventana_cuentas():
             return
 
         item_values = tree.item(selected_item)["values"]
-        
-        if not item_values:  # Evitar errores si no hay valores
+        if not item_values:
             messagebox.showerror("Error", "No se pudo obtener la información del registro seleccionado.")
             return
-        
-        id_cuenta = item_values[0]  # Se asume que el ID está en la primera columna
 
+        id_cuenta = item_values[0]
         confirmacion = messagebox.askyesno("Confirmar", f"¿Deseas eliminar la cuenta con ID {id_cuenta}?")
         ventana_cuentas.focus_force()
+
         if confirmacion:
             try:
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM cuentas WHERE id = %s", (id_cuenta,))
-                conn.commit()
-                                    
-                tree.delete(selected_item)
-                messagebox.showinfo("Éxito", f"Cuenta con ID {id_cuenta} eliminada.")
-                                    
+                with engine.begin() as conn:
+                    conn.execute(delete(tabla_cuentas).where(tabla_cuentas.c.id == id_cuenta))
+                    tree.delete(selected_item)
+                    messagebox.showinfo("Éxito", f"Cuenta con ID {id_cuenta} eliminada.")
             except Exception as e:
-                messagebox.showerror("Error", f"No se pudo eliminar: {e}")  
-                                    
-            finally:
-                if conn:
-                    conn.close()
-            
+                messagebox.showerror("Error", f"No se pudo eliminar: {e}")
             ventana_cuentas.focus_force()
 
-
-    # Cargar datos al inicio
     cargar_datos()
 
-    # Frame medio para formularios
+    # Frame para formulario
     frame_formulario = ttk.Frame(ventana_cuentas, padding=10)
     frame_formulario.grid(row=1, column=0, columnspan=3, pady=10, sticky="ew")
 
     label_titular = ttk.Label(frame_formulario, text="Entidad Titular:")
     label_titular.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-    
+
     titular_var = tk.StringVar()
     titular_var.trace_add("write", lambda *args: titular_var.set(titular_var.get().title()))
-    entry_titular = ttk.Entry(frame_formulario, textvariable = titular_var, width=30)
+    entry_titular = ttk.Entry(frame_formulario, textvariable=titular_var, width=30)
     entry_titular.grid(row=0, column=1, padx=5, pady=5)
-    
+
     label_llave = ttk.Label(frame_formulario, text="Llave:")
     label_llave.grid(row=1, column=0, padx=5, pady=5, sticky="w")
 
     entry_llave = ttk.Entry(frame_formulario, width=30)
     entry_llave.grid(row=1, column=1, padx=5, pady=5)
-    
-    # Configurar estilo de los botones
+
     style = ttk.Style()
     style.configure("TButton", font=("Arial", 12, "bold"), padding=6, width=12)
     style.configure("BotonCrear.TButton", background="#4CAF50", foreground="black")
     style.configure("BotonLimpiar.TButton", background="#F44336", foreground="black")
 
-    # Configurar el frame con un borde
     frame_botones = ttk.Frame(ventana_cuentas, relief="ridge", borderwidth=3)
     frame_botones.grid(row=2, column=0, columnspan=4, pady=10, padx=10, sticky="ew")
 
-    btn_crear = ttk.Button(frame_botones, text="Crear", command= crear_cuenta, style="BotonCrear.TButton")
+    btn_crear = ttk.Button(frame_botones, text="Crear", command=crear_cuenta, style="BotonCrear.TButton")
     btn_crear.grid(row=0, column=0, padx=10, pady=5)
 
-    btn_eliminar = ttk.Button(frame_botones, text="Eliminar", command= eliminar_cuenta, style="BotonLimpiar.TButton")
+    btn_eliminar = ttk.Button(frame_botones, text="Eliminar", command=eliminar_cuenta, style="BotonLimpiar.TButton")
     btn_eliminar.grid(row=0, column=1, padx=10, pady=5)
 
-
-    # Expandir columnas
     ventana_cuentas.columnconfigure(0, weight=1)
     ventana_cuentas.rowconfigure(0, weight=1)
 
@@ -1136,48 +1102,47 @@ def mostrar_registros(entry_cedula):
 
     try:
         """Obtiene un cliente y sus pagos de la base de datos PostgreSQL."""
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                # Obtener datos del cliente por cédula en lugar de nombre
-                cursor.execute("""
-                    SELECT Cedula, Nombre, COALESCE(Placa, 'N/A'), Fecha_inicio, Valor_cuota
-                    FROM clientes
-                    WHERE Cedula = %s
-                """, (cedula,))
-                cliente = cursor.fetchone()
+        
+        with Session(engine) as session:
+            # Obtener cliente por cédula
+            cliente = session.query(
+                tabla_clientes.c.cedula,
+                tabla_clientes.c.nombre,
+                tabla_clientes.c.placa,
+                tabla_clientes.c.fecha_inicio,
+                tabla_clientes.c.valor_cuota
+            ).filter(tabla_clientes.c.cedula == cedula).first()
 
-                if not cliente:
-                    messagebox.showerror("Error", "Cliente no encontrado.")
-                    return
+            if not cliente:
+                messagebox.showerror("Error", "Cliente no encontrado.")
+                return
 
-                cedula, nombre, placa, fecha_inicio, valor_cuota = cliente
+            cedula, nombre, placa, fecha_inicio, valor_cuota = cliente
 
-                if not fecha_inicio or not valor_cuota:
-                    messagebox.showerror("Error", "Datos del cliente incompletos.")
-                    return
+            if not fecha_inicio or not valor_cuota:
+                messagebox.showerror("Error", "Datos del cliente incompletos.")
+                return
 
-                fecha_inicio = datetime.strptime(str(fecha_inicio), "%Y-%m-%d")
-                fecha_actual = datetime.today()
-                
-                
-                print(f"- Fecha inicio: {fecha_inicio} (tipo: {type(fecha_inicio)})")
-                print(f"- Fecha actual: {fecha_actual} (tipo: {type(fecha_actual)})")
+            fecha_inicio = datetime.strptime(str(fecha_inicio), "%Y-%m-%d")
+            fecha_actual = datetime.today()
 
-                # Obtener registros de pagos por cédula en lugar de nombre
-                cursor.execute("""
-                    SELECT Fecha_registro, Valor, Tipo, Referencia
-                    FROM registros
-                    WHERE Cedula = %s
-                    ORDER BY Fecha_registro
-                """, (cedula,))
-                registros = cursor.fetchall()
-                
-                # Transformamos las fechas a datetime
-                registros_modificados = []
-                for fecha, valor, tipo, referencia in registros:
-                    fecha_dt = datetime.combine(fecha, time())
-                    print(f"Fecha registro: {fecha_dt} (tipo: {type(fecha_dt)})")
-                    registros_modificados.append((fecha_dt, valor, tipo, referencia))
+            print(f"- Fecha inicio: {fecha_inicio} (tipo: {type(fecha_inicio)})")
+            print(f"- Fecha actual: {fecha_actual} (tipo: {type(fecha_actual)})")
+
+            # Obtener registros de pagos
+            registros = session.query(
+                tabla_registros.c.fecha_registro,
+                tabla_registros.c.valor,
+                tabla_registros.c.tipo,
+                tabla_registros.c.referencia
+            ).filter(tabla_registros.c.cedula == cedula).order_by(tabla_registros.c.fecha_registro).all()
+
+            registros_modificados = []
+            for fecha, valor, tipo, referencia in registros:
+                fecha_dt = datetime.combine(fecha, time())
+                print(f"Fecha registro: {fecha_dt} (tipo: {type(fecha_dt)})")
+                registros_modificados.append((fecha_dt, valor, tipo, referencia))
+
             
 
         total = sum(row[1] for row in registros_modificados)  # row[1] es el campo "Valor"
@@ -1266,8 +1231,6 @@ def mostrar_registros(entry_cedula):
         valor_pendiente = cuotas_pendientes * valor_cuota
         valor_pendiente_cop = f"${valor_pendiente:,.0f}".replace(",", ".")
         # 🔹 Solo para mostrar con 1 decimal (sin afectar cálculos internos)
-        cuotas_pagadas_mostrar = f"{cuotas_pagadas:.1f}"
-        cuotas_pendientes_mostrar = f"{cuotas_pendientes:.1f}"
         
         def capturar_y_copiar():
             # Obtener coordenadas de la ventana
@@ -1432,19 +1395,26 @@ def ventana_propietario():
             cuenta_var.set(valores[5])  # Cuenta
 
     def cargar_propietarios():
-        """Carga los datos de la base de datos en el treeview para filtrarlos posteriormente."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT Placa, Modelo, Color, Tipo, Tarjeta_propiedad, Cuenta FROM propietario")
-
-        global data  # Guardamos los datos originales para filtrar
-        data = cursor.fetchall()
-        conn.close()
+        """Carga los datos de la tabla 'propietario' al Treeview para filtrarlos después."""
         
-        tree.delete(*tree.get_children())  # Limpiar registros previos
+        stmt = select(
+            tabla_propietario.c.placa,
+            tabla_propietario.c.modelo,
+            tabla_propietario.c.color,
+            tabla_propietario.c.tipo,
+            tabla_propietario.c.tarjeta_propiedad,
+            tabla_propietario.c.cuenta
+        )
 
-        for registro in data:
-            tree.insert("", "end", values=registro)
+        with engine.connect() as conn:
+            result = conn.execute(stmt)
+            global data
+            data = result.fetchall()
+
+        tree.delete(*tree.get_children())
+
+        for fila in data:
+            tree.insert("", "end", values=fila)
 
     def limpiar_campos():
         placa_var.set("")
@@ -1455,10 +1425,8 @@ def ventana_propietario():
         cuenta_var.set("")
 
     def agregar_propietario():
-        """Agregar un nuevo propietario a la base de datos de PostgreSQL."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        
+        """Agrega un nuevo propietario a la base de datos usando SQLAlchemy Core."""
+
         placa = placa_var.get().strip()
         modelo = modelo_var.get().strip()
         color = color_var.get().strip()
@@ -1466,41 +1434,45 @@ def ventana_propietario():
         tarjeta = tarjeta_var.get().strip()
         cuenta = cuenta_var.get().strip()
 
-        # Verificar que todos los campos están llenos
         if not placa or not modelo or not tarjeta or not color or not tipo or not cuenta:
             messagebox.showerror("Error", "Todos los campos son obligatorios.")
             ventana_propietario.focus_force()
             return
 
-        # Verificar si la placa ya existe
-        cursor.execute("SELECT COUNT(*) FROM propietario WHERE Placa = %s", (placa,))
-        existe = cursor.fetchone()[0]
+        with engine.connect() as conn:
+            # Verificar existencia
+            stmt_verificar = select(func.count()).select_from(tabla_propietario).where(tabla_propietario.c.placa == placa)
+            resultado = conn.execute(stmt_verificar).scalar()
 
-        if existe:
-            messagebox.showerror("Error", f"La placa {placa} ya está registrada.")
-            ventana_propietario.focus_force()
-        else:
-            cursor.execute(
-                "INSERT INTO propietario (Placa, Modelo, Color, Tipo, Tarjeta_propiedad, Cuenta) VALUES (%s, %s, %s, %s, %s, %s)", 
-                (placa, modelo, color, tipo, tarjeta, cuenta) 
+            if resultado > 0:
+                messagebox.showerror("Error", f"La placa {placa} ya está registrada.")
+                ventana_propietario.focus_force()
+                return
+
+            # Insertar nuevo registro
+            stmt_insertar = insert(tabla_propietario).values(
+                placa=placa,
+                modelo=modelo,
+                color=color,
+                tipo=tipo,
+                tarjeta_propiedad=tarjeta,
+                cuenta=cuenta
             )
+            conn.execute(stmt_insertar)
             conn.commit()
-            messagebox.showinfo("Éxito", "Propietario agregado correctamente.")
 
-        conn.close()
+        messagebox.showinfo("Éxito", "Propietario agregado correctamente.")
         cargar_propietarios()
         limpiar_campos()
 
     def modificar_propietario():
-    
-        """Modificar un propietario en la base de datos de PostgreSQL."""
+        """Modificar un propietario usando SQLAlchemy Core."""
         selected_item = tree.selection()
         if not selected_item:
             messagebox.showwarning("Selección requerida", "Por favor, seleccione un propietario para modificar.")
             ventana_propietario.focus_force()
             return
 
-        # Obtener los nuevos valores
         placa_nueva = placa_var.get().strip().upper()
         modelo_nuevo = modelo_var.get().strip().title()
         color_nuevo = color_var.get().strip().title()
@@ -1513,54 +1485,56 @@ def ventana_propietario():
             ventana_propietario.focus_force()
             return
 
-        # Obtener la placa original del Treeview
         item = tree.item(selected_item)
         placa_original = item["values"][0]
 
-        conn = get_connection()
-        conn.autocommit = False  # Desactivar autocommit antes de inicio de la transacción
-        cursor = conn.cursor()
+        with engine.begin() as conn:  # Usa transacción automática
+            try:
+                # Verificar duplicado (otra placa igual)
+                stmt_check = select(func.count()).select_from(tabla_propietario).where(
+                    (tabla_propietario.c.placa == placa_nueva) & (tabla_propietario.c.placa != placa_original)
+                )
+                duplicados = conn.execute(stmt_check).scalar()
+                if duplicados > 0:
+                    messagebox.showerror("Error de duplicado", f"La placa '{placa_nueva}' ya existe en otro registro.")
+                    ventana_propietario.focus_force()
+                    return
 
-        try:
-            # Verificar duplicidad
-            cursor.execute("SELECT COUNT(*) FROM propietario WHERE Placa = %s AND Placa <> %s", (placa_nueva, placa_original))
-            if cursor.fetchone()[0] > 0:
-                messagebox.showerror("Error de duplicado", f"La placa '{placa_nueva}' ya existe en otro registro.")
+                # Actualizar en tabla propietario
+                stmt_update_prop = (
+                    update(tabla_propietario)
+                    .where(tabla_propietario.c.placa == placa_original)
+                    .values(
+                        placa=placa_nueva,
+                        modelo=modelo_nuevo,
+                        color=color_nuevo,
+                        tipo=tipo_nuevo,
+                        tarjeta_propiedad=tarjeta_nueva,
+                        cuenta=cuenta_nueva
+                    )
+                )
+                conn.execute(stmt_update_prop)
+
+                # Actualizar placa en las tablas relacionadas
+                conn.execute(update(tabla_clientes).where(tabla_clientes.c.placa == placa_original).values(placa=placa_nueva))
+                conn.execute(update(tabla_registros).where(tabla_registros.c.placa == placa_original).values(placa=placa_nueva))
+
+                messagebox.showinfo("Éxito", "El propietario ha sido modificado correctamente.")
                 ventana_propietario.focus_force()
-                conn.rollback()
+
+                # Refrescar Treeview localmente (opcional)
+                tree.item(selected_item, values=(placa_nueva, modelo_nuevo, color_nuevo, tipo_nuevo, tarjeta_nueva, cuenta_nueva))
+                tree.selection_set(selected_item)
+
+            except Exception as e:
+                messagebox.showerror("Error de base de datos", f"Ocurrió un error: {e}")
+                ventana_propietario.focus_force()
                 return
-
-            # Actualización en todas las tablas relacionadas
-            cursor.execute("""
-                UPDATE propietario 
-                SET Placa = %s, Modelo = %s, Color = %s, Tipo = %s, Tarjeta_propiedad = %s, Cuenta = %s
-                WHERE Placa = %s
-            """, (placa_nueva, modelo_nuevo, color_nuevo, tipo_nuevo, tarjeta_nueva, cuenta_nueva, placa_original))
-
-            cursor.execute("UPDATE clientes SET Placa = %s WHERE Placa = %s", (placa_nueva, placa_original))
-            cursor.execute("UPDATE registros SET Placa = %s WHERE Placa = %s", (placa_nueva, placa_original))
-
-            # Confirmar
-            conn.commit()
-            messagebox.showinfo("Éxito", "El propietario ha sido modificado correctamente.")
-            ventana_propietario.focus_force()
-
-            # Actualizar el Treeview
-            tree.item(selected_item, values=(placa_nueva, modelo_nuevo, color_nuevo, tipo_nuevo, tarjeta_nueva, cuenta_nueva))
-            tree.selection_set(selected_item)
-
-        except Exception as e:
-            conn.rollback()
-            messagebox.showerror("Error de base de datos", f"Ocurrió un error: {e}")
-            ventana_propietario.focus_force()
-
-        finally:
-            conn.autocommit = True
-            conn.close()
 
         # Recargar y limpiar
         cargar_propietarios()
         limpiar_campos()
+
 
     # 🌟 FRAME PARA EL TREEVIEW
     frame_tree = ttk.Frame(ventana_propietario, padding=10)
@@ -1717,9 +1691,6 @@ def ventana_propietario():
 
 # ---------- Función para unir tablas y exportar a Excel ----------
 def join_and_export():
-
-    load_dotenv()
-
     # Selección de carpeta
     root = tk.Tk()
     root.withdraw()
@@ -1732,52 +1703,47 @@ def join_and_export():
     output_path = os.path.join(folder_selected, "resultado.xlsx")
 
     try:
-        conn = get_connection()
+        with engine.connect() as conn:
+            query = text("""
+                SELECT 
+                    r.id AS registro_id,
+                    r.fecha,
+                    r.placa,
+                    r.valor,
+                    -- agrega más columnas de registros según sea necesario
+                    p.cedula,
+                    p.nombre,
+                    p.direccion
+                    -- agrega más columnas de propietario según sea necesario
+                FROM registros r
+                LEFT JOIN propietario p ON r.placa = p.placa
+            """)
 
-        query = """
-        SELECT 
-            r.id AS registro_id,
-            r.fecha,
-            r.placa,
-            r.valor,
-            -- agrega más columnas de registros según sea necesario
-            p.cedula,
-            p.nombre,
-            p.direccion
-            -- agrega más columnas de propietario según sea necesario
-        FROM registros r
-        LEFT JOIN propietario p ON r.placa = p.placa
-        """
+            merged_df = pd.read_sql_query(query, conn)
+            merged_df.to_excel(output_path, index=False)
 
-        merged_df = pd.read_sql_query(query, conn)
-        merged_df.to_excel(output_path, index=False)
-
-        messagebox.showinfo("Exportación exitosa", f"El archivo .xlsx se guardó en:\n{output_path}")
+            messagebox.showinfo("Exportación exitosa", f"El archivo .xlsx se guardó en:\n{output_path}")
 
     except Exception as e:
         messagebox.showerror("Error", f"Ocurrió un error:\n{e}")
 
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-# ---------- Función para obtener datos ----------
+# ---------- Función para obtener datos cuadre del dia----------
 def obtener_datos(fecha_inicio, fecha_fin):
     try:
         stmt = (
             select(
-                tabla_registros.c.Nombre_cuenta.label("nombre_cuenta"),
+                tabla_registros.c.nombre_cuenta.label("nombre_cuenta"),
                 case(
-                    (tabla_registros.c.Motivo == 'N-a', 'Tarifas'),
-                    else_=tabla_registros.c.Motivo
+                    (tabla_registros.c.motivo == 'N-a', 'Tarifas'),
+                    else_=tabla_registros.c.motivo
                 ).label("motivo"),
-                tabla_registros.c.Valor.label("valor"),
-                tabla_registros.c.Saldos.label("saldos")
+                tabla_registros.c.valor.label("valor"),
+                tabla_registros.c.saldos.label("saldos")
             )
             .where(
                 and_(
-                    tabla_registros.c.Fecha_sistema >= fecha_inicio,
-                    tabla_registros.c.Fecha_sistema <= fecha_fin
+                    tabla_registros.c.fecha_sistema >= fecha_inicio,
+                    tabla_registros.c.fecha_sistema <= fecha_fin
                 )
             )
         )
@@ -2164,6 +2130,12 @@ def crear_interfaz_atrasos(root_padre):
     btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
     btn_exportar.pack(pady=5)
 
+
+
+
+
+
+
 # ---------- Función para ordenar columnas en TreeView ----------
 def ordenar_por_columna(tree, col, descendente):
     datos = [(tree.set(k, col), k) for k in tree.get_children('')]
@@ -2178,7 +2150,6 @@ def ordenar_por_columna(tree, col, descendente):
 
     # Cambiar orden para el próximo clic
     tree.heading(col, command=lambda: ordenar_por_columna(tree, col, not descendente))
-
 
 def cargar_nombres_columnas():
     if not os.path.exists(JSON_PATH):
