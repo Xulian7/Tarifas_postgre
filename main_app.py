@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
-import os
+import os, sys
 from datetime import datetime
 from PIL import Image, ImageTk
 from tkinter import PhotoImage
@@ -21,11 +21,15 @@ nequi_opciones = cargar_nequi_opciones()
 # Variable global para saber qué Entry se actualizó por último
 ultimo_entry = None
 
+def get_resource_path(relative_path):
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
 # Crear ventana principal
 ventana = tk.Tk()
 ventana.title("Registro de Tarifas")
 ventana.geometry("800x500")
-icono_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'inicio.ico')
+icono_path = get_resource_path(os.path.join("img", "inicio.ico"))
 if os.path.exists(icono_path):
     ventana.iconbitmap(icono_path)
 else:
