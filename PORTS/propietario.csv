@@ -17,7 +17,7 @@ ID,Placa,Modelo,Color,Tipo,Tarjeta_propiedad,Cuenta
 16,YLQ27F,BAJAJ2022,Negro Nebulosa,Nueva,Leidi Paez,Nequi Paulo Cordon
 17,BYD27H,AK125NKD EIII 2025,Negro,Nueva,Leidi Paez,Nequi Paulo Cordon
 18,ZZB39G,AK125NKD EIII 2025,Negro,Nueva,Leidi Paez,Nequi Paulo Cordon
-19,JYM47G,BAJAJ CT100 2023,Negro Infinito,Nueva,Mary Montana,Nequi Paulo Cordon
+19,JYM47G,BAJAJ CT100 2023,Negro Infinito,Nueva,Mary Montaña,Nequi Paulo Cordon
 20,DKO81H,AK125NKD EIII 2025,Gris,Nueva,Jesus Aurelio,Nequi Paulo Cordon
 21,DKO87H,AK125NKD EIII 2025,Negro,Nueva,Jesus Aurelio,Nequi Paulo Cordon
 22,DKT51H,AK125NKD EIII 2025,Negro,Nueva,Leidi Paez,Nequi Paulo Cordon
@@ -193,9 +193,14 @@ ID,Placa,Modelo,Color,Tipo,Tarjeta_propiedad,Cuenta
 192,OSV24H,Ak125 Nkd2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
 193,OSV25H,Ak125Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
 194,OSQ22H,Ak125 Nkd2026,Gris,Nueva,Leo Motos,Nequi Paulo Cordon
-195,OSQ23H,Ak125 Nkd2026,Gris,Nueva,Leo Motos,Nequi Paulo Cordon
+195,OSQ23H,Gris,Gris,Nueva,Leo Motos,Nequi Paulo Cordon
 196,OSQ20H,Akt125 Nkd2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
 197,RAL44H,Ak125 Nkd2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
 198,OSQ25H,Ak125 Nkd 2026,Gris,Nueva,Leo Motos,Nequi Paulo Cordon
 199,RAK74H,Ak125Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
 200,OSQ21H,Ak125 Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
+201,RAO93H,Ak125 Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
+202,RAL41H,Ak125 Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
+203,RAK73H,Ak125 Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
+204,RAL45H,Ak125 Nkd 2026,Negro,Nueva,Leo Motos,Nequi Paulo Cordon
+205,RAO96H,Ak125 Nkd 2026,Negro Mate,Nueva,Leo Motos,Nequi Paulo Cordon

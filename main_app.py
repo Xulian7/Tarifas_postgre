@@ -173,7 +173,7 @@ entry_saldos = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
 entry_saldos.grid(row=4, column=1, padx=5, pady=3, sticky="w")
 
 tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3, sticky="e")
-tipos_opciones = ["N-a","Inicial", "otras deudas", "multa"]
+tipos_opciones = ["N-a","Inicial", "Otras deudas", "Multa"]
 combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=27)
 combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
 combo_motivo.set("N-a")

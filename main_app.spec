@@ -1,16 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
-from PyInstaller.utils.hooks import collect_data_files
 
 # Ruta base
 base_path = os.path.abspath('.')
 
-# Incluir base de datos y JSON
+# Archivos necesarios en tiempo de ejecución
 datas = [
-    (os.path.join('diccionarios', 'base_dat.db'), 'diccionarios'),
-    (os.path.join('diccionarios', 'black_list.json'), 'diccionarios'),
-    (os.path.join('icono.ico'), '.'),
+    (os.path.join('.env'), '.'),  # Archivo de variables de entorno
+    (os.path.join('icono.ico'), '.'),  # Ícono de la app
 ]
 
 # Incluir todos los íconos de botones de la carpeta img
@@ -23,12 +21,13 @@ if os.path.isdir(img_path):
 
 a = Analysis(
     ['main_app.py'],
-    pathex=[],
+    pathex=[base_path],
     binaries=[],
     datas=datas,
     hiddenimports=[
         'tkcalendar',
-        'pandas'
+        'pandas',
+        'conexion',  # <- Aseguramos que se incluya este módulo
     ],
     hookspath=[],
     hooksconfig={},
@@ -50,7 +49,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # Cambialo a True si querés que se abra la consola al ejecutar
+    console=False,  # Cambialo a True si querés ver la consola
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
