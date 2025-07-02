@@ -2,7 +2,6 @@ import pandas as pd
 import tkinter as tk
 import tkinter.font as tkFont
 from tkinter import filedialog, messagebox, ttk
-from dotenv import load_dotenv
 import os
 from datetime import datetime, timedelta, time
 from tkcalendar import DateEntry
@@ -16,7 +15,6 @@ import json
 from openpyxl import Workbook
 import ctypes
 from tkinter import Toplevel
-import psycopg2
 from sqlalchemy import select, insert, update, delete, case, func, text, and_, or_
 from sqlalchemy.orm import Session
 from conexion import engine
