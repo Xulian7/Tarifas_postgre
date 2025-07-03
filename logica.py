@@ -961,7 +961,9 @@ def abrir_ventana_cuentas():
                 )).fetchall()
 
                 for row in rows:
-                    tree.insert("", "end", values=row)
+                    valores = tuple(str(c) for c in row)
+                    tree.insert("", "end", values=valores)
+
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los datos: {e}")
@@ -1726,6 +1728,7 @@ def join_and_export():
         messagebox.showerror("Error", f"Ocurrió un error:\n{e}")
 
 # ---------- Función para obtener datos cuadre del dia----------
+# ---------- Función de obtención de datos ----------
 def obtener_datos(fecha_inicio, fecha_fin):
     try:
         stmt = (
@@ -1745,15 +1748,53 @@ def obtener_datos(fecha_inicio, fecha_fin):
                 )
             )
         )
-
         with engine.connect() as conn:
             df = pd.read_sql(stmt, conn)
-
         return df
 
     except Exception as e:
         print(f"💥 Error al obtener datos: {e}")
         return pd.DataFrame()
+
+# ---------- Lógica de resumen integrada ----------
+def generar_resumen_por_cuenta(df):
+    resultado = []
+    total_general_valor = 0
+    total_general_saldos = 0
+
+    cuentas = df['nombre_cuenta'].unique()
+
+    for cuenta in cuentas:
+        df_cuenta = df[df['nombre_cuenta'] == cuenta]
+
+        # ---------- Fila de "Tarifas" ----------
+        total_valor = df_cuenta['valor'].sum()
+        resultado.append((cuenta, "Tarifas", f"{total_valor:,.0f}", "0"))
+
+        # ---------- Motivos desde columna 'motivo' pero sumando solo saldos ----------
+        df_saldos_motivos = (
+            df_cuenta.groupby("motivo")['saldos']
+            .sum()
+            .reset_index()
+        )
+
+        for _, row in df_saldos_motivos.iterrows():
+            if row["motivo"] != "Tarifas":  # Evitar duplicar la fila de Tarifas
+                resultado.append((cuenta, row["motivo"], "0", f"{row['saldos']:,.0f}"))
+
+        # ---------- Subtotales de la cuenta ----------
+        subtotal_valor = total_valor
+        subtotal_saldos = df_saldos_motivos['saldos'].sum()
+
+        resultado.append((cuenta, "TOTAL CUENTA", f"{subtotal_valor:,.0f}", f"{subtotal_saldos:,.0f}"))
+        resultado.append(("", "", "", ""))  # Línea vacía
+
+        total_general_valor += subtotal_valor
+        total_general_saldos += subtotal_saldos
+
+    # ---------- Total general ----------
+    resultado.append(("TOTAL GENERAL", "", f"{total_general_valor:,.0f}", f"{total_general_saldos:,.0f}"))
+    return resultado
 
 # ---------- Crear interfaz ----------------------
 def crear_resumen_por_cuenta_y_motivo():
@@ -1761,11 +1802,9 @@ def crear_resumen_por_cuenta_y_motivo():
     ventana.title("Resumen por Cuenta y Motivo")
     ventana.geometry("1000x650")
 
-    # ---------- TÍTULO ----------
     lbl_titulo = tk.Label(ventana, text="", font=("Arial", 16, "bold"))
     lbl_titulo.pack(pady=10)
 
-    # ---------- Filtro: Fecha Inicio y Fin + Botones ----------
     frame_top = tk.Frame(ventana)
     frame_top.pack()
 
@@ -1787,7 +1826,6 @@ def crear_resumen_por_cuenta_y_motivo():
     btn_captura = tk.Button(frame_top, text="📸 Capturar")
     btn_captura.pack(side="left", padx=10, pady=5)
 
-    # ---------- TREEVIEW ----------
     tree = ttk.Treeview(ventana, columns=["Cuenta", "Motivo", "Total Valor", "Total Saldos"], show="headings")
     for col in ["Cuenta", "Motivo", "Total Valor", "Total Saldos"]:
         tree.heading(col, text=col)
@@ -1798,14 +1836,12 @@ def crear_resumen_por_cuenta_y_motivo():
     tree.configure(yscrollcommand=scrollbar_y.set)
     scrollbar_y.pack(side="right", fill="y")
 
-    # ---------- Estilos ----------
     style = ttk.Style()
     style.configure("Treeview.Heading", font=("Arial", 11, "bold"))
     style.configure("Treeview", font=("Arial", 10), rowheight=25)
     tree.tag_configure("bold", font=("Arial", 10, "bold"))
     tree.tag_configure("total_general", background="#d1ffd1", font=("Arial", 11, "bold"))
 
-    # ---------- Acción del botón ----------
     def cargar_datos():
         tree.delete(*tree.get_children())
         inicio = fecha_inicio.get_date()
@@ -1817,48 +1853,23 @@ def crear_resumen_por_cuenta_y_motivo():
 
         lbl_titulo.config(text=f"📋 Reporte de valores del {inicio.strftime('%d-%m-%Y')} al {fin.strftime('%d-%m-%Y')}")
 
-        try:
-            df = obtener_datos(inicio, fin)
-        except Exception as e:
-            print(f"Error al obtener datos: {e}")
-            tree.insert("", "end", values=("Error al obtener datos", "", "", ""))
-            return
-
+        df = obtener_datos(inicio, fin)
         if df.empty:
             tree.insert("", "end", values=("Sin datos", "", "", ""))
             return
 
-        resumen = (
-            df.groupby(["nombre_cuenta", "motivo"])
-            .agg({"valor": "sum", "saldos": "sum"})
-            .reset_index()
-        )
+        resumen = generar_resumen_por_cuenta(df)
 
-        total_general_valor = 0
-        total_general_saldos = 0
-
-        for cuenta in resumen["nombre_cuenta"].unique():
-            df_cuenta = resumen[resumen["nombre_cuenta"] == cuenta]
-            total_valor_cuenta = df_cuenta["valor"].sum()
-            total_saldos_cuenta = df_cuenta["saldos"].sum()
-
-            for _, row in df_cuenta.iterrows():
-                tree.insert("", "end", values=(
-                    cuenta, row["motivo"], f"{row['valor']:,.0f}", f"{row['saldos']:,.0f}"))
-
-            tree.insert("", "end", values=(
-                cuenta, "TOTAL", f"{total_valor_cuenta:,.0f}", f"{total_saldos_cuenta:,.0f}"), tags=("bold",))
-            tree.insert("", "end", values=("", "", "", ""))
-
-            total_general_valor += total_valor_cuenta
-            total_general_saldos += total_saldos_cuenta
-
-        tree.insert("", "end", values=(
-            "TOTAL GENERAL", "", f"{total_general_valor:,.0f}", f"{total_general_saldos:,.0f}"), tags=("total_general",))
+        for fila in resumen:
+            if "TOTAL CUENTA" in fila[1]:
+                tree.insert("", "end", values=fila, tags=("bold",))
+            elif "TOTAL GENERAL" in fila[0]:
+                tree.insert("", "end", values=fila, tags=("total_general",))
+            else:
+                tree.insert("", "end", values=fila)
 
     btn_cargar.config(command=cargar_datos)
 
-    # ---------- Acción del botón de captura al portapapeles ----------
     def capturar_ventana():
         ventana.update()
         x = ventana.winfo_rootx()
@@ -1868,13 +1879,11 @@ def crear_resumen_por_cuenta_y_motivo():
         imagen = ImageGrab.grab(bbox=(x, y, x + w, y + h)).convert("RGB")
         output = io.BytesIO()
         imagen.save(output, format="BMP")
-        data = output.getvalue()[14:]  # quitar cabecera BMP
-
+        data = output.getvalue()[14:]
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
         win32clipboard.CloseClipboard()
-
         messagebox.showinfo("Captura", "📸 Captura copiada al portapapeles.")
 
     btn_captura.config(command=capturar_ventana)

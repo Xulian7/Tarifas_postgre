@@ -5,7 +5,7 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 1006476590,Bryan Perdomo,Colombia,3023941092,cancha del dangond,NJJ64E **,2025-01-01,365,Alquiler,25000.0,inactivo,0,No aplica,No aplica,No aplica
 1098630056,Edwin Blanco Carrero,Colombia,3104792912,Calle 32 #7e-53,JQX34H **,2025-02-09,365,Opcion de compra,36000.0,inactivo,0,No aplica,No aplica,No aplica
 1005332361,Andres Felipe Ramirez,Colombia,312 4187128,Inmaculada Fase 1 T8 Apto 20-48,DLF35H **,2024-12-04,365,Opcion de compra,36000.0,inactivo,0,No aplica,No aplica,No aplica
-13717670,Hugo Pachecho Tamy,Colombia,3014121089,Carrera 5 # 7-15 Santana,DKU92H,2024-11-30,365,Opcion de compra,36000.0,activo,0,No aplica,No aplica,No aplica
+13717670,Hugo Pachecho Tamy,Colombia,3014121089,Carrera 5 # 7-15 Santana,DKU92H **,2024-11-30,365,Dia,36000.0,inactivo,0,No aplica,No aplica,No aplica
 1095788064,Miguel Angel Villamizar Garcia,Colombia,3227975407,Carrera 13D #103a-07,BYB68H,2024-12-12,365,Opcion de compra,36000.0,activo,0,No aplica,No aplica,No aplica
 19945196,Marlon Medina Medina,Venezuela,3508821636,Calle 15 9-41 Gaitan,DLF31H,2024-11-30,365,Opcion de compra,36000.0,activo,0,No aplica,No aplica,No aplica
 1005247989,Sergio Garcia Rueda,Colombia,3204528919,Casa #17 Piso 2 mz m cristal alto,PCA25B **,2024-12-27,365,Opcion de compra,30000.0,inactivo,0,No aplica,No aplica,No aplica
@@ -134,7 +134,7 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 1065233672,Dayan Andres Mendez,Colombia,310 8218143,Cra 10 an #24-12,MDD93H **,2025-04-05,365,Opcion de compra,37000.0,inactivo,0,No aplica,No aplica,No aplica
 1082884441,Alvaro David Jimenez,Colombia,3158678926,VILLA LUZ MZ B APTO3,MDC52H **,2025-04-05,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 91463882,Eduard Enrique Mendoza,Colombia,3165703305,cra 3 #11b-35,MDC51H **,2025-04-05,365,Opcion de compra,37000.0,inactivo,0,No aplica,No aplica,No aplica
-1095924235,Jonatan Moncada,Colombia,3143739977,cra 18 #2b-31,MDF66H,2025-04-05,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
+1095924235,Jonatan Moncada,Colombia,3143739977,cra 18 #2b-31,MDF66H **,2025-04-05,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 6853033,Fabio Jose Garcia,Venezuela,316 3771831,SAN TELMO 1 MZ Q CASA 3,MDC58H,2025-04-05,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 6817080,Jose Miguel Pineres,Venezuela,350 6221684,BARRIO COMUNEROS CARRERA 17 CALLE 4,MDC54H **,2025-04-06,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 1101209722,Elkin Horacio Salazar Duarte,Colombia,3016410919,CRA 16E #2ª-03 GIRON,MDD91H,2025-04-08,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
@@ -156,7 +156,7 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 10187820,Heiller Jaramillo,Colombia,3208601696,calle 110bh #15-09,MCY26H,2025-04-22,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 1098634985,Juan Diego Enciso,Colombia,315 4888069,mirador del carrizal,JRH81H **,2025-04-22,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 1005083559,Jose Ignacio Mora Mora,Colombia,317 6861820,CRA 31 #1E CASA 55 LA CUMBRE,JRH76H **,2025-05-07,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
-1232889349,German Parra,Colombia,324 9362541,PDEF,ORZ14H,2025-04-23,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
+1232889349,German Parra,Colombia,324 9362541,PDEF,ORZ14H,2025-04-27,365,Dia,37000.0,activo,0,No aplica,No aplica,No aplica
 1098758045,Jainer Javier Ibanez,Colombia,315 9691910,: CRA 16 #55-35 GOMEZ NINO,ORZ15H,2025-04-24,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 1095934400,Yerson Fabian Garcia Moreno,Colombia,318 5086636,Nuevo Giron,DYB97H,2025-04-24,365,Opcion de compra,34000.0,activo,0,No aplica,No aplica,No aplica
 1098630595,Samuel Araque,Colombia,3188201492,lagos calle 41 6-32,MDC51H,2025-04-25,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
@@ -184,18 +184,18 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 1007193002,Josuhan Raul Ruiz Murillo,Colombia,301 1324800,:  CRA 26 CASA 097 Bahondo,OSF11H,2025-05-09,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 6564151,Elizabeth Molina Murcia,Venezuela,3171110506,:  COLORADOS VILLA PATRICIA,MCY21H,2025-05-10,365,Dia,37000.0,activo,0,No aplica,No aplica,No aplica
 1063487968,Ilder Alfonso Ortiz Matute,Colombia,320 4751739,MESA DE RUITOQUE VEREDA LA HORMIGA,OSF12H,2025-05-11,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
-1005297014,Nelson Eduardo Rodriguez,Colombia,322 8004696,Girardot,OSF01H,2025-05-10,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
+1005297014,Nelson Eduardo Rodriguez,Colombia,322 8004696,Girardot,OSF01H **,2025-05-10,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 91489751,Wilson Silva,Colombia,310 7813396,CRA 4ª #45-38 CAMPOHERMOSO,OSF05H,2025-05-10,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 1102374505,Juan Carlos Nino,Colombia,304 2175358,villa marcela piedec,OSG32H,2025-05-11,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 10034246915,Jose Seijas Seijas,Venezuela,321 3012323,:  BARRIO COLORADOS AV 51 #  CASA 21 -63,OSF09H,2025-05-13,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 13542188,Breytner Johan Rodriguez,Colombia,302 7461302,CRA 19W #66-25 GRAN LADERA,OSF07H,2025-05-13,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 25771105,Ferlix Johan Saldivia Monsalve,Venezuela,311 6243865,HOTEL DUBAI,HAK12H **,2025-05-13,365,Dia,35000.0,inactivo,0,No aplica,No aplica,No aplica
-91498601,Cesar Sanabria,Colombia,315 9489464,colorados,DLF32H,2025-05-14,365,Opcion de compra,36000.0,activo,0,No aplica,No aplica,No aplica
+91498601,Cesar Sanabria,Colombia,315 9489464,colorados,DLF32H **,2025-05-14,365,Dia,36000.0,inactivo,0,No aplica,No aplica,No aplica
 1099368605,Jhon Freddy Castillo,Colombia,315 6774882,CRA 13 #11-32 CENTRO LEBRIJA,NSR36H,2025-05-15,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 1102373162,Carlos Andres Martinez Ardila,Colombia,316 5423964,CRA 12ª #50-56 VILLALUZ,OSF08H **,2025-05-15,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 1098777956,Rolfe Aldair Maceas,Colombia,310 4830805,CRA 14 #78-79 APTO 301 LA VICTORIA,NSR38H,2025-05-15,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
-1098791385,Michael Stiven Caceres,Colombia,319 3653368,Cra 54w la gran ladera,OSF04H,2025-05-18,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
-1003236322,Victor Jesus Benitez Fontalvo,Colombia,300 9937806,CALLE 16W #5C-26,NSR32H,2025-05-16,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
+1098791385,Michael Stiven Caceres,Colombia,319 3653368,Cra 54w la gran ladera,OSF04H,2025-05-19,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
+1003236322,Victor Jesus Benitez Fontalvo,Colombia,300 9937806,CALLE 16W #5C-26,NSR32H **,2025-05-16,365,Dia,37000.0,inactivo,0,No aplica,No aplica,No aplica
 34055330,Luisa Mar Pacheco Sánchez,Venezuela,315 1801421,hotel centenario,DLF26H **,2025-05-16,365,Dia,35000.0,inactivo,0,No aplica,No aplica,No aplica
 1098760971,Jhon Freddy Jacome,Colombia,324 3403881,Calle 12 #27-63 La universidad,NSR40H,2025-05-17,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
 1005152003,Daniel Felipe Manosalva,Colombia,304 5622416,Calle 143C # 43ª -51,NSR41H,2025-05-17,365,Opcion de compra,37000.0,activo,0,No aplica,No aplica,No aplica
@@ -216,7 +216,7 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 6446205,Yesenia Del Valle Mendez,Venezuela,324 9854708,san fco,DKO80H,2025-05-20,365,Dia,35000.0,activo,200000,NO aplica,NO aplica,NO aplica
 1005162240,Norbey Fabian Escobar,Colombia,3228221165,Cra 11w #35-10,JRI23H,2025-05-24,365,Dia,36000.0,activo,100000,na,na,na
 1005370213,Franklin Mauricio Ayala,Colombia,316 1711874,CALLE 107F CRA 15C CASA 120 PISO 4,OSL52H,2025-05-25,365,Dia,37000.0,activo,0,no,no,no
-1063485684,Juan David Fester,Colombia,3026778412,mesa de los santos,OSL53H,2025-05-25,365,Dia,37000.0,activo,0,no,no,no
+1063485684,Juan David Fester,Colombia,3026778412,mesa de los santos,OSL53H,2025-05-27,365,Dia,37000.0,activo,0,no,no,no
 1095957422,Fabian David Corredor Quinonez,Colombia,3188115797,CRA 2 OCC#8N-16 BAVARIA II,OSN30H,2025-05-29,365,Dia,37000.0,activo,0,na,na,3202824694
 7106396,Ilwin Enrique Gomez,Venezuela,311 8765123,Calle 16 #11-26 Apartamento 301,MCU25H **,2025-05-28,365,Dia,37000.0,inactivo,0,No,No,No
 1042248013,Emanuel Enrique Castilla,Colombia,304 3254357,calle22c #1w08 barrio portal del valle (Piedecuesta),OSK96H,2025-05-29,365,Dia,37000.0,activo,0,no,no,no
@@ -254,8 +254,8 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 1095923803,Sergio Andres Gomez,Colombia,350 4125961,x definir,OSV24H,2025-06-18,365,Dia,37000.0,activo,0,no,no,no
 1140871522,Juan David Osorio Barrios,Colombia,3126460848,calle 44 #8-29 alfonso lopez,OSV25H,2025-06-19,365,Dia,37000.0,activo,600000,no,no,no
 1098643698,Eduardo Lizcano,Colombia,3046498121,CARRERA 6 #8-24,OSK99H,2025-06-19,365,Dia,37000.0,activo,400000,no,no,no
-27857094,Leonardo Jesus Rivera,Venezuela,3170563299,hotel sofia,MCT87H,2025-06-20,365,Dia,37000.0,activo,400000,no,no,no
-26157307,Adrian Jose Acosta,Colombia,315 0157273,calle 11 #25-52,ZZB44G,2025-06-20,365,Dia,35000.0,activo,300000,no,no,no
+27857094,Leonardo Jesus Rivera,Venezuela,3170563299,hotel sofia,MCT87H **,2025-06-20,365,Dia,37000.0,inactivo,400000,no,no,no
+26157307,Adrian Jose Acosta,Colombia,315 0157273,calle 11 #25-52,ZZB44G **,2025-06-20,365,Dia,35000.0,inactivo,300000,no,no,no
 1005150057,Camilo Andres Suarez,Colombia,3188837368,CALLE 11 #35-103 CALDAS,OSQ25H,2025-06-20,365,Dia,37000.0,activo,600000,no,no,no
 5051592,Carlos Alberto Castellanos Rojas,Venezuela,3167745560,zpamanga2 cra33b#114,OSQ20H,2025-06-22,365,Dia,37000.0,activo,100000,no,no,no
 1065894889,Adith Amaris Chinchilla,Colombia,312 6124103,kolorados,RAK74H,2025-06-22,365,Dia,37000.0,activo,600000,no,no,no
@@ -272,3 +272,7 @@ Cedula,Nombre,Nacionalidad,Telefono,Direccion,Placa,Fecha_inicio,Fecha_final,Tip
 1098820021,Oscar Ortega,Colombia,313 4634100,CALLE 31 14 OCC 124,HAK14H,2025-06-28,365,Dia,34000.0,activo,300000,no,no,no
 1095956607,Jeison Jair Burgos Pineda,Colombia,3164776254,por definir,RAO96H,2025-06-28,365,Dia,37000.0,activo,600000,no,no,no
 1095955643,Cesar Augusto Roidriguez,Colombia,315 2445849,por definir,DLF33H,2025-06-28,365,Dia,34000.0,activo,300000,no,no,no
+1092355149,Alexander Ortiz Uribe,Colombia,316 1995799,finca el silencio vereda piedecuesta,RAO92H,2025-07-02,365,Dia,37000.0,activo,600000,no,no,no
+1098784712,Rosana Rodriguez,Colombia,324 2565770,GETSEMANI MZ,DLF32H,2025-07-02,365,Dia,35000.0,activo,400000,NO,NO,NO
+1096065349,Duber Stiven Jaimes,Colombia,3227518272,prados de la cumbre,OSF01H,2025-07-02,365,Dia,37000.0,activo,400000,no,no,no
+6508372,Marwis Palma,Colombia,300 2846003,X DEFINIR,MDC52H,2025-07-03,325,Dia,37000.0,activo,400000,NO,NO,NO
