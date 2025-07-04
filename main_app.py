@@ -310,9 +310,97 @@ def tomar_foto_tree(tree):
     for child in tree.get_children():
         datos_tree_original.append(tree.item(child)["values"])
 
+# --- Cuadro de sugerencias de valor ---
+frame_sugerido = tk.Frame(frame_izquierdo, bd=2, relief="solid", padx=5, pady=5)
+frame_sugerido.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+for col in range(7):  # Ahora 7 columnas
+    frame_sugerido.grid_columnconfigure(col, weight=1)
+
+btn_style = {
+    "font": ("Arial", 10, "bold"),
+    "relief": "ridge",
+    "bd": 2,
+    "height": 2,
+    "cursor": "hand2",
+    "width": 10
+}
+
+valor_cuota_actual = 0.0  # Valor por defecto
+
+def set_monto(valor):
+    if valor > 0:
+        entry_monto.delete(0, tk.END)
+        entry_monto.insert(0, f"{valor:.0f}")
+
+# --- Botones dinámicos (por valor_cuota) ---
+btn_1 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual), bg="#e1f5fe", **btn_style)
+btn_2 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 2), bg="#e1f5fe", **btn_style)
+btn_3 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 3), bg="#e1f5fe", **btn_style)
+
+# --- Botones genéricos ---
+btn_50k  = tk.Button(frame_sugerido, text="$50.000",  command=lambda: set_monto(50000),  bg="#fff8dc", **btn_style)   # beige claro
+btn_100k = tk.Button(frame_sugerido, text="$100.000", command=lambda: set_monto(100000), bg="#fff9c4", **btn_style)  # amarillo claro
+btn_200k = tk.Button(frame_sugerido, text="$200.000", command=lambda: set_monto(200000), bg="#ffe0b2", **btn_style)  # naranja claro
+
+# --- Botón de actualización ---
+btn_actualizar = tk.Button(
+    frame_sugerido, text="🔄", font=("Arial", 12, "bold"),
+    bg="#c8e6c9", relief="groove", bd=2, command=lambda: actualizar_sugerencias()
+)
+
+# --- Ubicar todos en el grid ---
+btn_1.grid(row=0, column=0, padx=3, pady=2, sticky="ew")
+btn_2.grid(row=0, column=1, padx=3, pady=2, sticky="ew")
+btn_3.grid(row=0, column=2, padx=3, pady=2, sticky="ew")
+btn_50k.grid(row=0, column=3, padx=3, pady=2, sticky="ew")
+btn_100k.grid(row=0, column=4, padx=3, pady=2, sticky="ew")
+btn_200k.grid(row=0, column=5, padx=3, pady=2, sticky="ew")
+btn_actualizar.grid(row=0, column=6, padx=3, pady=2, sticky="ew")
+
+# --- Lógica de actualización ---
+def actualizar_sugerencias():
+    global valor_cuota_actual
+    placa = entry_placa.get().strip()
+    cedula = entry_cedula.get().strip()
+
+    if not placa or not cedula:
+        valor_cuota_actual = 0
+        for btn in [btn_1, btn_2, btn_3]:
+            btn.config(text="---", state="disabled")
+        entry_monto.delete(0, tk.END)
+        return
+
+    try:
+        with engine.connect() as conn:
+            stmt = select(tabla_clientes.c.valor_cuota).where(
+                (tabla_clientes.c.placa == placa) &
+                (tabla_clientes.c.cedula == cedula)
+            )
+            result = conn.execute(stmt).fetchone()
+
+            if result:
+                valor_cuota_actual = float(result[0])
+                btn_1.config(text=f"${valor_cuota_actual:,.0f}", state="normal")
+                btn_2.config(text=f"${valor_cuota_actual * 2:,.0f}", state="normal")
+                btn_3.config(text=f"${valor_cuota_actual * 3:,.0f}", state="normal")
+            else:
+                valor_cuota_actual = 0
+                for btn in [btn_1, btn_2, btn_3]:
+                    btn.config(text="---", state="disabled")
+                entry_monto.delete(0, tk.END)
+
+    except Exception as e:
+        print(f"Error al consultar cuota sugerida: {e}")
+        valor_cuota_actual = 0
+        for btn in [btn_1, btn_2, btn_3]:
+            btn.config(text="---", state="disabled")
+        entry_monto.delete(0, tk.END)
+
+
+
 # Frame de los botones
 frame_botones = tk.Frame(frame_izquierdo, bd=2, relief="solid")
-frame_botones.grid(row=1, column=0, padx=5, pady=5, sticky="ew")  # Se expande en X
+frame_botones.grid(row=2, column=0, padx=5, pady=5, sticky="ew")  # Se expande en X
 frame_botones.grid_columnconfigure(0, weight=1)
 frame_botones.grid_columnconfigure(1, weight=1)
 frame_botones.grid_columnconfigure(2, weight=1)
@@ -335,17 +423,17 @@ btn_clientes.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 btn_extracto = tk.Button(frame_botones, text=" Extracto", image=cargar_imagen("Extracto"), compound="left", width=ancho_widget, command=lambda: mostrar_registros(entry_cedula))
 btn_extracto.grid(row=1, column=2, padx=5, pady=5, sticky="ew")
 
-btn_export = tk.Button(frame_botones, text=" Exportar", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=join_and_export)
-btn_export.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
+#btn_export = tk.Button(frame_botones, text=" Exportar", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=join_and_export)
+#btn_export.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
+
+btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
+btn_mora.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
 
 btn_propietario = tk.Button(frame_botones, text=" Aliados", image=cargar_imagen("llave"), compound="left" , width=ancho_widget,  command=ventana_propietario)
 btn_propietario.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
 btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=crear_resumen_por_cuenta_y_motivo)
 btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
-
-btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(root_padre=ventana))
-btn_mora.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
 btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")

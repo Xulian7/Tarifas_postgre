@@ -1396,7 +1396,7 @@ def ventana_propietario():
 
     def cargar_propietarios():
         """Carga los datos de la tabla 'propietario' al Treeview para filtrarlos después."""
-        
+
         stmt = select(
             tabla_propietario.c.placa,
             tabla_propietario.c.modelo,
@@ -1409,12 +1409,12 @@ def ventana_propietario():
         with engine.connect() as conn:
             result = conn.execute(stmt)
             global data
-            data = result.fetchall()
+            data = [tuple(row) for row in result.fetchall()]  # Asegura tuplas simples
 
         tree.delete(*tree.get_children())
 
         for fila in data:
-            tree.insert("", "end", values=fila)
+            tree.insert("", "end", values=list(fila))  # Asegura que no sean tuplas anidadas
 
     def limpiar_campos():
         placa_var.set("")
@@ -1689,46 +1689,7 @@ def ventana_propietario():
 
     cargar_propietarios()
 
-# ---------- Función para unir tablas y exportar a Excel ----------
-def join_and_export():
-    # Selección de carpeta
-    root = tk.Tk()
-    root.withdraw()
-    folder_selected = filedialog.askdirectory(title="Selecciona una carpeta para guardar el archivo")
-
-    if not folder_selected:
-        messagebox.showwarning("Operación cancelada", "No se guardó ningún archivo.")
-        return
-
-    output_path = os.path.join(folder_selected, "resultado.xlsx")
-
-    try:
-        with engine.connect() as conn:
-            query = text("""
-                SELECT 
-                    r.id AS registro_id,
-                    r.fecha,
-                    r.placa,
-                    r.valor,
-                    -- agrega más columnas de registros según sea necesario
-                    p.cedula,
-                    p.nombre,
-                    p.direccion
-                    -- agrega más columnas de propietario según sea necesario
-                FROM registros r
-                LEFT JOIN propietario p ON r.placa = p.placa
-            """)
-
-            merged_df = pd.read_sql_query(query, conn)
-            merged_df.to_excel(output_path, index=False)
-
-            messagebox.showinfo("Exportación exitosa", f"El archivo .xlsx se guardó en:\n{output_path}")
-
-    except Exception as e:
-        messagebox.showerror("Error", f"Ocurrió un error:\n{e}")
-
 # ---------- Función para obtener datos cuadre del dia----------
-# ---------- Función de obtención de datos ----------
 def obtener_datos(fecha_inicio, fecha_fin):
     try:
         stmt = (
@@ -1935,6 +1896,7 @@ def reporte_atrasos():
                 ]
 
                 resultados.append({
+                    "Cedula": cedula,
                     "Placa": placa,
                     "Nombre": nombre,
                     "Antigüedad": dias_transcurridos,
@@ -1970,7 +1932,7 @@ def reporte_atrasos():
         return pd.DataFrame()
 
 # ---------- Crear interfaz de atrasos ----------
-def crear_interfaz_atrasos(root_padre):
+def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     global ventana_atrasos
 
     if ventana_atrasos and ventana_atrasos.winfo_exists():
@@ -2002,6 +1964,16 @@ def crear_interfaz_atrasos(root_padre):
             return
 
         placa = valores[columnas.index("Placa")]  # obtiene el valor de la columna "Placa"
+        nombre = valores[columnas.index("Nombre")]
+        cedula = valores[columnas.index("Cedula")]
+        
+        entry_cedula.delete(0, tk.END)
+        entry_cedula.insert(0, cedula)
+        entry_nombre.delete(0, tk.END)
+        entry_nombre.insert(0, nombre)
+        entry_placa.delete(0, tk.END)
+        entry_placa.insert(0, placa)
+        
 
         if len(placa) == 6:
             placa_modificada = placa[:3] + "-" + placa[3:]
@@ -2136,12 +2108,6 @@ def crear_interfaz_atrasos(root_padre):
 
     btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
     btn_exportar.pack(pady=5)
-
-
-
-
-
-
 
 # ---------- Función para ordenar columnas en TreeView ----------
 def ordenar_por_columna(tree, col, descendente):
