@@ -168,9 +168,21 @@ tk.Label(frame_formulario, text="Tarifa:").grid(row=3, column=0, padx=5, pady=3,
 entry_monto = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
 entry_monto.grid(row=3, column=1, padx=5, pady=3, sticky="w")
 
+# Variable con valor inicial "0"
+var_saldos = tk.StringVar(value="0")
+# Función para validar que no se quede vacío
+def validar_saldo(*args):
+    valor = var_saldos.get().strip()
+    if valor == "":
+        var_saldos.set("0")
+
+# Asociar validación al cambio de la variable
+var_saldos.trace_add("write", validar_saldo)
+# Crear widgets
 tk.Label(frame_formulario, text="Otros:").grid(row=4, column=0, padx=5, pady=3, sticky="e")
-entry_saldos = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
+entry_saldos = tk.Entry(frame_formulario, textvariable=var_saldos, width=ancho_widget, justify="center")
 entry_saldos.grid(row=4, column=1, padx=5, pady=3, sticky="w")
+
 
 tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3, sticky="e")
 tipos_opciones = ["N-a","Inicial", "Otras deudas", "Multa"]
@@ -217,7 +229,7 @@ tipos_opciones = ["Consignación", "Transfer Nequi", "Bancolombia", "Transfiya",
 combo_tipo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=ancho_widget)
 combo_tipo.grid(row=2, column=4, padx=5, pady=3, sticky="w")
 
-tk.Label(frame_formulario, text="Referencia:").grid(row=3, column=3, padx=5, pady=3, sticky="e")
+tk.Label(frame_formulario, text="Referencia:", font=("Segoe UI", 10, "bold"), fg="red").grid(row=3, column=3, padx=5, pady=3, sticky="e")
 var_referencia = tk.StringVar()
 def to_uppercase(*args):
     var_referencia.set(var_referencia.get().upper())
@@ -438,8 +450,8 @@ btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
 btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-#btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=abrir_gestion_deudas)
-#btn_deudas.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
+btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=iniciar_ventana_deudas)
+btn_deudas.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
 
 # Frame de información (derecha)
 frame_derecho = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
