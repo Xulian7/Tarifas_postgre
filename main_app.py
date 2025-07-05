@@ -435,9 +435,6 @@ btn_clientes.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 btn_extracto = tk.Button(frame_botones, text=" Extracto", image=cargar_imagen("Extracto"), compound="left", width=ancho_widget, command=lambda: mostrar_registros(entry_cedula))
 btn_extracto.grid(row=1, column=2, padx=5, pady=5, sticky="ew")
 
-#btn_export = tk.Button(frame_botones, text=" Exportar", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=join_and_export)
-#btn_export.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
-
 btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
 btn_mora.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
 
@@ -446,6 +443,9 @@ btn_propietario.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
 btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=crear_resumen_por_cuenta_y_motivo)
 btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
+
+btn_export = tk.Button(frame_botones, text=" Multas", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=iniciar_consulta_multas)
+btn_export.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
 btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")

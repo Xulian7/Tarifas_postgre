@@ -1952,7 +1952,7 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
         try:
             return locale.currency(float(x), grouping=True)
         except:
-            return x  # Deja valores como '' o 'TOTAL' sin tocar
+            return x
 
     df["Monto Adeudado"] = df["Monto Adeudado"].apply(formatear_monto)
 
@@ -1962,22 +1962,19 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
         selected_item = tree.focus()
         if not selected_item:
             return
-
         valores = tree.item(selected_item, 'values')
         if not valores:
             return
-
-        placa = valores[columnas.index("Placa")]  # obtiene el valor de la columna "Placa"
+        placa = valores[columnas.index("Placa")]
         nombre = valores[columnas.index("Nombre")]
         cedula = valores[columnas.index("Cedula")]
-        
+
         entry_cedula.delete(0, tk.END)
         entry_cedula.insert(0, cedula)
         entry_nombre.delete(0, tk.END)
         entry_nombre.insert(0, nombre)
         entry_placa.delete(0, tk.END)
         entry_placa.insert(0, placa)
-        
 
         if len(placa) == 6:
             placa_modificada = placa[:3] + "-" + placa[3:]
@@ -1990,18 +1987,15 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
         selected_item = tree.focus()
         if not selected_item:
             return
-
         valores = tree.item(selected_item, 'values')
         if not valores:
             return
-
         try:
             nombre_completo = valores[columnas.index("Nombre")]
             primer_nombre = nombre_completo.split()[0]
             antiguedad = int(valores[columnas.index("Antigüedad")])
             atraso = float(valores[columnas.index("Días de Atraso")])
             monto = valores[columnas.index("Monto Adeudado")]
-
             gabela = (antiguedad / 30) * 1.5
 
             if antiguedad < 30:
@@ -2044,35 +2038,35 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     ventana_atrasos = tk.Toplevel(root_padre)
     ventana_atrasos.title("Reporte de Atrasos")
     ventana_atrasos.geometry("1200x600")
-    ventana_atrasos.update_idletasks()
-    x = (ventana_atrasos.winfo_screenwidth() // 2) - (1200 // 2)
-    y = (ventana_atrasos.winfo_screenheight() // 2) - (600 // 2)
-    ventana_atrasos.geometry(f"+{x}+{y}")
 
-    entry_filtro = tk.Entry(ventana_atrasos, font=("Arial", 12))
-    entry_filtro.pack(fill="x", padx=10, pady=5)
+    frame_principal = tk.Frame(ventana_atrasos)
+    frame_principal.grid(row=0, column=0, sticky="nsew")
+    ventana_atrasos.grid_rowconfigure(0, weight=1)
+    ventana_atrasos.grid_columnconfigure(0, weight=1)
 
-    tree = ttk.Treeview(ventana_atrasos, columns=columnas, show='headings')
-    
+    entry_filtro = tk.Entry(frame_principal, font=("Arial", 12))
+    entry_filtro.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
+
+    tree = ttk.Treeview(frame_principal, columns=columnas, show='headings')
     style = ttk.Style()
     style.configure("Treeview", font=("Arial", 10))
     style.configure("Treeview.Heading", font=("Arial", 10, "bold"))
     tree.tag_configure('total', font=('Arial', 10, 'bold'))
-    style.configure("Treeview.Heading", font=("Arial", 10))  # Encabezado
-    tree = ttk.Treeview(ventana_atrasos, columns=columnas, show='headings')
-    tree.tag_configure('grave', background='pink')  # Resaltar filas con más de 10 días de atraso
+    tree.tag_configure('grave', background='pink')
     tree.bind("<Double-1>", copiar_placa_al_portapapeles)
     tree.bind("<Button-3>", copiar_mensaje_personalizado)
 
     for col in columnas:
-        tree.heading(col, text=col, anchor='center')  # también centramos el encabezado
-        tree.column(col, anchor='center', width=120)  # puedes ajustar el width si necesitas
+        tree.heading(col, text=col, anchor='center')
+        tree.column(col, anchor='center', width=120)
 
+    tree.grid(row=1, column=0, columnspan=2, sticky="nsew")
+    frame_principal.grid_rowconfigure(1, weight=1)
+    frame_principal.grid_columnconfigure(0, weight=1)
 
-    scrollbar_y = ttk.Scrollbar(ventana_atrasos, orient="vertical", command=tree.yview)
+    scrollbar_y = ttk.Scrollbar(frame_principal, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar_y.set)
-    scrollbar_y.pack(side="right", fill="y")
-    tree.pack(fill="both", expand=True)
+    scrollbar_y.grid(row=1, column=2, sticky="ns")
 
     df_original = df.copy()
 
@@ -2080,14 +2074,12 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
         tree.delete(*tree.get_children())
         for _, fila in df_view.iterrows():
             valores = list(fila)
-
             if str(fila["Nombre"]).strip().upper() == "TOTAL":
                 tags = ('total',)
             elif isinstance(fila["Días de Atraso"], (int, float)) and fila["Días de Atraso"] > 10:
                 tags = ('grave',)
             else:
                 tags = ()
-
             tree.insert("", "end", values=valores, tags=tags)
 
     def aplicar_filtro(event=None):
@@ -2110,8 +2102,26 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
             df_original.to_excel(ruta, index=False)
             print(f"Exportado a {ruta}")
 
-    btn_exportar = tk.Button(ventana_atrasos, text="Exportar a Excel", command=exportar_excel)
-    btn_exportar.pack(pady=5)
+    def generar_nuevo_tree():
+        seleccion = tree.selection()
+        if not seleccion:
+            return
+        nueva_ventana = tk.Toplevel(ventana_atrasos)
+        nueva_ventana.title("Selección filtrada")
+        nuevo_tree = ttk.Treeview(nueva_ventana, columns=columnas, show='headings')
+        for col in columnas:
+            nuevo_tree.heading(col, text=col)
+            nuevo_tree.column(col, anchor="center", width=120)
+        nuevo_tree.pack(fill="both", expand=True)
+        for item in seleccion:
+            valores = tree.item(item, "values")
+            nuevo_tree.insert("", "end", values=valores)
+
+    btn_exportar = tk.Button(frame_principal, text="Exportar a Excel", command=exportar_excel)
+    btn_exportar.grid(row=2, column=0, pady=5, sticky="e", padx=10)
+
+    btn_generar = tk.Button(frame_principal, text="Reporte recogidas", command=generar_nuevo_tree)
+    btn_generar.grid(row=2, column=1, pady=5, sticky="w", padx=10)
 
 # ---------- Función para ordenar columnas en TreeView ----------
 def ordenar_por_columna(tree, col, descendente):
@@ -2266,6 +2276,7 @@ def iniciar_interfaz():
 
     root.mainloop()
 
+# ---------- Función para iniciar la ventana de deudas ----------
 def iniciar_ventana_deudas():
         # --- FUNCIONES ---
     def cargar_clientes(filtro=""):
@@ -2509,3 +2520,61 @@ def iniciar_ventana_deudas():
     # Cargar inicial
     cargar_clientes()
 
+#---------------- Función para iniciar la consulta de multas ----------
+def iniciar_consulta_multas():
+    # --- FUNCIONES ---
+    def consultar_multas():
+        fecha = date_entry.get_date()
+        tree.delete(*tree.get_children())
+        with engine.begin() as conn:
+            stmt = select(tabla_registros).where(
+                and_(
+                    tabla_registros.c.motivo == "Multa",
+                    tabla_registros.c.fecha_registro == fecha
+                )
+            ).order_by(tabla_registros.c.fecha_registro.desc())
+
+            resultados = conn.execute(stmt).fetchall()
+            if not resultados:
+                messagebox.showinfo("Sin resultados", f"No hay multas para {fecha}")
+                return
+
+            for row in resultados:
+                tree.insert("", "end", values=(
+                    row.id, row.fecha_registro, row.cedula, row.nombre, row.placa,
+                    row.valor, row.saldos, row.motivo, row.tipo, row.nombre_cuenta,
+                    row.referencia, row.verificada
+                ))
+    # --- UI ---
+    ventana = tk.Tk()
+    ventana.title("Consultar Multas por Fecha")
+    ventana.geometry("1300x500")
+    ventana.configure(bg="white")
+
+    # Filtro por fecha
+    frame_filtro = tk.Frame(ventana, bg="white")
+    frame_filtro.pack(pady=10)
+
+    tk.Label(frame_filtro, text="Selecciona fecha:", bg="white", font=("Arial", 10, "bold")).pack(side="left")
+    date_entry = DateEntry(frame_filtro, date_pattern="yyyy-mm-dd", width=12)
+    date_entry.pack(side="left", padx=5)
+
+    tk.Button(frame_filtro, text="Consultar", command=consultar_multas, bg="#3498db", fg="white").pack(side="left", padx=10)
+
+    # Tabla resultados
+    cols = ["ID", "Fecha", "Cédula", "Nombre", "Placa", "Valor", "Saldos", "Motivo", "Tipo", "Cuenta", "Referencia", "Verificada"]
+    tree = ttk.Treeview(ventana, columns=cols, show="headings")
+    for col in cols:
+        tree.heading(col, text=col)
+        tree.column(col, anchor="center")
+
+    # Scrollbars
+    scroll_y = ttk.Scrollbar(ventana, orient="vertical", command=tree.yview)
+    scroll_x = ttk.Scrollbar(ventana, orient="horizontal", command=tree.xview)
+    tree.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+    tree.pack(fill="both", expand=True)
+    scroll_y.pack(side="right", fill="y")
+    scroll_x.pack(side="bottom", fill="x")
+
+    ventana.mainloop()
