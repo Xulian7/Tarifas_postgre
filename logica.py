@@ -20,6 +20,10 @@ from sqlalchemy.orm import Session
 from conexion import engine
 from conexion import clientes as tabla_clientes, registros as tabla_registros, propietario as tabla_propietario
 from conexion import cuentas as tabla_cuentas, otras_deudas as tabla_otras_deudas
+from docx import Document
+from docx2pdf import convert
+from num2words import num2words
+import tempfile
 
 JSON_PATH = 'diccionarios/columnas.json'
 XLSX_PATH = 'diccionarios/estructura.xlsx'
@@ -616,6 +620,33 @@ def abrir_ventana_clientes():
             messagebox.showerror("Error", f"Formato de fecha inválido: {fecha_ui}")
             return None
 
+    def generar_contrato(valores_dict, plantilla_path="diccionarios/contrato.docx"):
+        if not os.path.exists(plantilla_path):
+            return None  # ⛔ No hay plantilla
+
+        doc = Document(plantilla_path)
+
+        for p in doc.paragraphs:
+            for key, val in valores_dict.items():
+                p.text = p.text.replace(f"{{{key}}}", str(val))
+
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for key, val in valores_dict.items():
+                        cell.text = cell.text.replace(f"{{{key}}}", str(val))
+
+        temp_docx = os.path.join(tempfile.gettempdir(), "contrato_temp.docx")
+        doc.save(temp_docx)
+
+        os.makedirs("contratos", exist_ok=True)
+        nombre = valores_dict["NOMBRE"].replace(" ", "")
+        placa = valores_dict["PLACA"].replace(" ", "").upper()
+        salida_pdf = f"contratos/Contrato {nombre} {placa}.pdf"
+
+        convert(temp_docx, salida_pdf)
+        return salida_pdf
+
     def registrar_cliente():
         # Obtener valores de los campos
         valores = [
@@ -636,7 +667,6 @@ def abrir_ventana_clientes():
             entries["Telefono Ref"].get().strip()
         ]
 
-        # Validar campos vacíos
         if '' in valores:
             messagebox.showerror("Error", "Todos los campos deben estar llenos.")
             ventana_clientes.focus_force()
@@ -644,23 +674,19 @@ def abrir_ventana_clientes():
 
         try:
             with engine.begin() as conn:
-                # Validar existencia de la placa en propietario
                 stmt_prop = select(tabla_propietario.c.placa).where(tabla_propietario.c.placa == valores[5]).limit(1)
                 resultado = conn.execute(stmt_prop).fetchone()
                 if not resultado:
                     messagebox.showwarning("Advertencia", f"La Placa {valores[5]} no está registrada en la base de datos de propietarios.")
                     return
 
-                # Validar existencia previa del cliente o placa
                 stmt_check = select(
                     tabla_clientes.c.cedula,
                     tabla_clientes.c.placa
                 ).where(
                     (tabla_clientes.c.cedula == valores[0]) | (tabla_clientes.c.placa == valores[5])
                 ).limit(1)
-
                 resultado = conn.execute(stmt_check).fetchone()
-
                 if resultado:
                     mensaje = "No se puede registrar el cliente porque:\n"
                     if resultado[0] == valores[0]:
@@ -670,7 +696,7 @@ def abrir_ventana_clientes():
                     messagebox.showwarning("Advertencia", mensaje)
                     return
 
-                # Insertar nuevo cliente
+                # Insertar cliente
                 conn.execute(insert(tabla_clientes), {
                     "cedula": valores[0],
                     "nombre": valores[1],
@@ -689,7 +715,6 @@ def abrir_ventana_clientes():
                     "telefono_ref": valores[14]
                 })
 
-                # Insertar deuda cuota inicial
                 conn.execute(insert(tabla_otras_deudas), {
                     "cedula": valores[0],
                     "placa": valores[5],
@@ -698,20 +723,45 @@ def abrir_ventana_clientes():
                     "valor": valores[11]
                 })
 
-            messagebox.showinfo("Éxito", "Cliente guardado correctamente.")
-            ventana_clientes.focus_force()
+            # Preparar valores para contrato
+            fecha_dt = datetime.strptime(valores[6], "%Y-%m-%d")
+            fecha_dia_siguiente = fecha_dt + timedelta(days=1)
+            valor_cuota = valores[9]
+            valores_dict = {
+                "CEDULA": valores[0],
+                "NOMBRE": valores[1],
+                "NACIONALIDAD": valores[2],
+                "TELÉFONO": valores[3],
+                "DIRECCION": valores[4],
+                "PLACA": valores[5],
+                "DIA": fecha_dt.day,
+                "MES": fecha_dt.month,
+                "YEAR": fecha_dt.year,
+                "DIAS2": fecha_dia_siguiente.day,
+                "MES2": fecha_dia_siguiente.month,
+                "YEAR2": fecha_dia_siguiente.year,
+                "TARIFA": valor_cuota,
+                "INICIAL": valores[11],
+                "LETRAS": num2words(int(valor_cuota), lang="es").upper(),
+                "TELEFONO_REF": valores[14]
+            }
+
+            ruta_pdf = generar_contrato(valores_dict)
+            if ruta_pdf:
+                messagebox.showinfo("Éxito", f"Cliente guardado correctamente.\nContrato generado: {ruta_pdf}")
+            else:
+                messagebox.showinfo("Éxito", "Cliente guardado correctamente.\n(No se generó contrato porque no se encontró la plantilla.)")
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar el cliente.\n{e}")
             return
 
-        # 🔹 ACTUALIZAR EL TREEVIEW
+        # Actualizar treeview
         tree.delete(*tree.get_children())
         for fila in obtener_datos_clientes():
             tree.insert("", "end", values=fila)
         ajustar_columnas(tree)
 
-        # 🔹 ACTUALIZAR datos_originales
         global datos_originales
         datos_originales = [tree.item(item)["values"] for item in tree.get_children()]
         ventana_clientes.focus_force()
