@@ -13,7 +13,7 @@ from conexion import engine
 from conexion import clientes as tabla_clientes
 from conexion import registros as tabla_registros
 from conexion import propietario as tabla_propietario
-
+from num2words import num2words
 
 datos_cargados = []  # Variable global para guardar los datos de tree
 # Función para cargar las opciones de cuentas disponibles en la DB
@@ -128,7 +128,6 @@ def actualizar_sugerencias_por_placa(event):
     else:
         listbox_sugerencias.grid_forget()
 
-        
 entry_placa.bind("<KeyRelease>", actualizar_sugerencias_por_placa)
 
 # Crear la función para seleccionar la sugerencia y actualizar los otros campos
@@ -160,13 +159,31 @@ def seleccionar_sugerencia(event):
 
         except Exception as e:
             messagebox.showerror("Error", f"Error de base de datos:\n{e}")
-
+        
         listbox_sugerencias.place_forget()
 
+def actualizar_letras(event=None):
+    widget_origen = event.widget if event else entry_monto
+
+    if widget_origen not in (entry_monto, entry_saldos):
+        return
+
+    valor = widget_origen.get()
+    try:
+        numero = float(valor)
+        texto = num2words(numero, lang='es').replace("coma", "punto").capitalize()
+
+        if widget_origen == entry_monto:
+            label_letras.config(text=f"Valor : {texto} pesos")
+        elif widget_origen == entry_saldos:
+            label_letras.config(text=f"Otros : {texto} pesos")
+    except:
+        label_letras.config(text="")
 
 tk.Label(frame_formulario, text="Tarifa:").grid(row=3, column=0, padx=5, pady=3, sticky="e")
 entry_monto = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
 entry_monto.grid(row=3, column=1, padx=5, pady=3, sticky="w")
+entry_monto.bind("<KeyRelease>", actualizar_letras)
 
 # Variable con valor inicial "0"
 var_saldos = tk.StringVar(value="0")
@@ -182,7 +199,7 @@ var_saldos.trace_add("write", validar_saldo)
 tk.Label(frame_formulario, text="Otros:").grid(row=4, column=0, padx=5, pady=3, sticky="e")
 entry_saldos = tk.Entry(frame_formulario, textvariable=var_saldos, width=ancho_widget, justify="center")
 entry_saldos.grid(row=4, column=1, padx=5, pady=3, sticky="w")
-
+entry_saldos.bind("<KeyRelease>", actualizar_letras)
 
 tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3, sticky="e")
 tipos_opciones = ["N-a","Inicial", "Otras deudas", "Multa"]
@@ -190,12 +207,17 @@ combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="read
 combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
 combo_motivo.set("N-a")
 
+# Nuevo label justo debajo del combo
+label_letras = tk.Label(frame_formulario, text="")
+label_letras.grid(row=6, column=1, padx=5, pady=(0, 5), sticky="w")
+
 # Crea el frame para las sugerencias
 frame_sugerencias = tk.Frame(frame_formulario, width=150, height=100)  # Ajusta según necesidad
 frame_sugerencias.grid(row=0, column=2, rowspan=5, padx=5, pady=3, sticky="nsew")
 # Crea el Listbox dentro del frame_sugerencias
 listbox_sugerencias = tk.Listbox(frame_sugerencias, height=10, width=30, justify="center")  # Ajusta el width
 listbox_sugerencias.grid(row=0, column=0, sticky="nsew") 
+
 # Hacer que el frame_sugerencias pueda expandirse
 frame_sugerencias.grid_rowconfigure(0, weight=1)  # Hace que el Listbox se expanda
 frame_sugerencias.grid_columnconfigure(0, weight=1)  # Hace que el Listbox se expanda
@@ -231,8 +253,10 @@ combo_tipo.grid(row=2, column=4, padx=5, pady=3, sticky="w")
 
 tk.Label(frame_formulario, text="Referencia:", font=("Segoe UI", 10, "bold"), fg="red").grid(row=3, column=3, padx=5, pady=3, sticky="e")
 var_referencia = tk.StringVar()
+
 def to_uppercase(*args):
     var_referencia.set(var_referencia.get().upper())
+
 var_referencia.trace_add("write", to_uppercase)
 entry_referencia = tk.Entry(frame_formulario, width=33, justify="center", textvariable=var_referencia)
 entry_referencia.grid(row=3, column=4, padx=5, pady=3, sticky="w")
@@ -275,7 +299,7 @@ def actualizar_nequi(*args):
         combo_nequi.set("Efectivo")
         combo_nequi.config(state="disabled")
     elif tipo in ("", "Ajuste P/P"):
-        combo_nequi.set("")
+        combo_nequi.set("Ajuste P/P")
         combo_nequi.config(state="disabled")
     else:
         combo_nequi.config(state="normal")
@@ -348,7 +372,6 @@ def set_monto(valor):
 btn_1 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual), bg="#e1f5fe", **btn_style)
 btn_2 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 2), bg="#e1f5fe", **btn_style)
 btn_3 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 3), bg="#e1f5fe", **btn_style)
-
 # --- Botones genéricos ---
 btn_50k  = tk.Button(frame_sugerido, text="$50.000",  command=lambda: set_monto(50000),  bg="#fff8dc", **btn_style)   # beige claro
 btn_100k = tk.Button(frame_sugerido, text="$100.000", command=lambda: set_monto(100000), bg="#fff9c4", **btn_style)  # amarillo claro
@@ -408,8 +431,6 @@ def actualizar_sugerencias():
             btn.config(text="---", state="disabled")
         entry_monto.delete(0, tk.END)
 
-
-
 # Frame de los botones
 frame_botones = tk.Frame(frame_izquierdo, bd=2, relief="solid")
 frame_botones.grid(row=2, column=0, padx=5, pady=5, sticky="ew")  # Se expande en X
@@ -418,40 +439,48 @@ frame_botones.grid_columnconfigure(1, weight=1)
 frame_botones.grid_columnconfigure(2, weight=1)
 
 btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias))
-btn_agregar.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+btn_agregar.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
 
 btn_consultar = tk.Button(frame_botones, text=" Consultar", image=cargar_imagen("Buscar"), compound="left", width=ancho_widget, command=lambda: (cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada), tomar_foto_tree(tree)))
-btn_consultar.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+btn_consultar.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
 
 btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree))
-btn_limpiar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+btn_limpiar.grid(row=0, column=2, padx=3, pady=3, sticky="ew")
 
 btn_cuentas = tk.Button(frame_botones, text=" Cuentas", image=cargar_imagen("Cuenta"), compound="left", width=ancho_widget, command=abrir_ventana_cuentas)
-btn_cuentas.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+btn_cuentas.grid(row=1, column=0, padx=3, pady=3, sticky="ew")
 
 btn_clientes = tk.Button(frame_botones, text=" Conductores", image=cargar_imagen("Cliente"), compound="left", width=ancho_widget, command=abrir_ventana_clientes)
-btn_clientes.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+btn_clientes.grid(row=1, column=1, padx=3, pady=3, sticky="ew")
 
 btn_extracto = tk.Button(frame_botones, text=" Extracto", image=cargar_imagen("Extracto"), compound="left", width=ancho_widget, command=lambda: mostrar_registros(entry_cedula))
-btn_extracto.grid(row=1, column=2, padx=5, pady=5, sticky="ew")
+btn_extracto.grid(row=1, column=2, padx=3, pady=3, sticky="ew")
 
 btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
-btn_mora.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
+btn_mora.grid(row=2, column=0, padx=3, pady=3, sticky="ew")
 
 btn_propietario = tk.Button(frame_botones, text=" Aliados", image=cargar_imagen("llave"), compound="left" , width=ancho_widget,  command=ventana_propietario)
-btn_propietario.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+btn_propietario.grid(row=2, column=1, padx=3, pady=3, sticky="ew")
 
 btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=crear_resumen_por_cuenta_y_motivo)
-btn_balance.grid(row=2, column=2, padx=5, pady=5, sticky="ew")
+btn_balance.grid(row=2, column=2, padx=3, pady=3, sticky="ew")
 
 btn_export = tk.Button(frame_botones, text=" Multas", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=iniciar_consulta_multas)
-btn_export.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
+btn_export.grid(row=3, column=0, padx=3, pady=3, sticky="ew")
 
 btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
-btn_garage.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+btn_garage.grid(row=3, column=1, padx=3, pady=3, sticky="ew")
 
 btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=iniciar_ventana_deudas)
-btn_deudas.grid(row=3, column=2, padx=5, pady=5, sticky="ew")
+btn_deudas.grid(row=3, column=2, padx=3, pady=3, sticky="ew")
+
+btn_editor = tk.Button(frame_botones, text=" Editar", image=cargar_imagen("Editar"), compound="left", width=ancho_widget,command=lanzar_editor_registros)
+btn_editor.grid(row=4, column=0, padx=3, pady=3, sticky="ew")
+
+btn_placas = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
+btn_placas.grid(row=4, column=1, padx=3, pady=3, sticky="ew")
+
+
 
 # Frame de información (derecha)
 frame_derecho = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")

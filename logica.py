@@ -15,7 +15,9 @@ import json
 from openpyxl import Workbook
 import ctypes
 from tkinter import Toplevel
-from sqlalchemy import select, insert, update, delete, case, func, text, and_, or_
+from sqlalchemy import select, insert, update, delete, case, func, text, and_, or_, Table, MetaData
+from sqlalchemy.exc import SQLAlchemyError
+from conexion import engine, registros
 from sqlalchemy.orm import Session
 from conexion import engine
 from conexion import clientes as tabla_clientes, registros as tabla_registros, propietario as tabla_propietario
@@ -24,10 +26,12 @@ from docx import Document
 from docx2pdf import convert
 from num2words import num2words
 import tempfile
+import re
 
 JSON_PATH = 'diccionarios/columnas.json'
 XLSX_PATH = 'diccionarios/estructura.xlsx'
-
+total_deuda_float = 0.0
+total_abonos_float = 0.0
 # Establecer configuraciones locales - español
 locale.setlocale(locale.LC_ALL, 'es_CO.utf8')
 ventana_clientes = None  # Variable global dentro del módulo
@@ -116,7 +120,6 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
                      entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
                      listbox_sugerencias):
 
-
     # Obtener valores
     cedula = entry_cedula.get().strip()
     nombre = entry_nombre.get().strip()
@@ -172,15 +175,49 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
         fecha_bd = convertir_fecha(fecha)
         if not fecha_bd:
             return
+        
+        # Validar que la fecha no sea futura
+    if fecha_bd > datetime.today().date():
+        messagebox.showwarning("Fecha inválida", "No puedes registrar fechas posteriores al día de hoy.")
+        return
+
 
     try:
         with engine.begin() as conn:
             # Validar referencia duplicada
             if referencia:
-                ref_check = select(tabla_registros.c.referencia).where(tabla_registros.c.referencia == referencia)
-                if conn.execute(ref_check).first():
-                    messagebox.showwarning("Referencia duplicada", f"La referencia '{referencia}' ya existe.")
+                ref_check = select(
+                    tabla_registros.c.referencia,
+                    tabla_registros.c.nombre,
+                    tabla_registros.c.fecha_registro,
+                    tabla_registros.c.id
+                ).where(tabla_registros.c.referencia == referencia)
+
+                resultado = conn.execute(ref_check).first()
+
+                if resultado:
+                    referencia_existente = resultado.referencia
+                    nombre_existente = resultado.nombre
+                    fecha_existente = resultado.fecha_registro
+                    id_existente = resultado.id
+
+                    # Formatea fecha si es datetime
+                    if hasattr(fecha_existente, "strftime"):
+                        fecha_formateada = fecha_existente.strftime("%d/%m/%Y %H:%M")
+                    else:
+                        fecha_formateada = str(fecha_existente)
+
+                    messagebox.showwarning(
+                        "⚠️ Referencia duplicada",
+                        f"La referencia '{referencia_existente}' ya existe.\n\n"
+                        f"🔹 **Nombre:** {nombre_existente}\n"
+                        f"📅 **Fecha de registro:** {fecha_formateada}\n"
+                        f"🆔 **ID transacción:** {id_existente}"
+                    )
+
+
                     return
+
 
             # Validar combinación única
             check_cliente = select(tabla_clientes.c.cedula).where(
@@ -226,7 +263,11 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
                                     entry_fecha, combo_tipo, combo_nequi, combo_verificada,
                                     listbox_sugerencias, tree)
         )
-
+        
+        hoy = datetime.today().strftime("%d/%m/%Y")
+        entry_fecha.delete(0, tk.END)
+        entry_fecha.insert(0, hoy)
+        
     except Exception as e:
         messagebox.showerror("Error", f"Error en base de datos:\n{e}")
 
@@ -250,7 +291,7 @@ def mostrar_msgbox_exito(entry_cedula, limpiar_funcion, parcial_funcion):
     ])
     btn_generar.pack(side="left", padx=10)
     
-    btn_aceptar = tk.Button(botones_frame, text="Repetir Cliente", width=10,
+    btn_aceptar = tk.Button(botones_frame, text="Repetir Cliente", width=15,
     command=lambda: [
         parcial_funcion(),
         ventana.destroy()])
@@ -1758,8 +1799,8 @@ def obtener_datos(fecha_inicio, fecha_fin):
             )
             .where(
                 and_(
-                    tabla_registros.c.fecha_sistema >= fecha_inicio,
-                    tabla_registros.c.fecha_sistema <= fecha_fin
+                    tabla_registros.c.fecha_registro >= fecha_inicio,
+                    tabla_registros.c.fecha_registro <= fecha_fin
                 )
             )
         )
@@ -2173,6 +2214,8 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     btn_generar = tk.Button(frame_principal, text="Reporte recogidas", command=generar_nuevo_tree)
     btn_generar.grid(row=2, column=1, pady=5, sticky="w", padx=10)
 
+
+
 # ---------- Función para ordenar columnas en TreeView ----------
 def ordenar_por_columna(tree, col, descendente):
     datos = [(tree.set(k, col), k) for k in tree.get_children('')]
@@ -2326,22 +2369,38 @@ def iniciar_interfaz():
 
     root.mainloop()
 
+
 # ---------- Función para iniciar la ventana de deudas ----------
 def iniciar_ventana_deudas():
+    
         # --- FUNCIONES ---
-    def cargar_clientes(filtro=""):
+    def cargar_clientes(filtro_nombre="", filtro_placa=""):
         tree_clientes.delete(*tree_clientes.get_children())
         with engine.begin() as conn:
             stmt = select(tabla_clientes.c.nombre, tabla_clientes.c.placa, tabla_clientes.c.cedula)
-            if filtro:
-                stmt = stmt.where(tabla_clientes.c.nombre.ilike(f"%{filtro}%"))
+
+            condiciones = []
+            if filtro_nombre:
+                condiciones.append(tabla_clientes.c.nombre.ilike(f"%{filtro_nombre}%"))
+            if filtro_placa:
+                condiciones.append(tabla_clientes.c.placa.ilike(f"%{filtro_placa}%"))
+
+            if condiciones:
+                stmt = stmt.where(and_(*condiciones))
+
             stmt = stmt.order_by(tabla_clientes.c.placa)
             for nombre, placa, cedula in conn.execute(stmt):
                 tree_clientes.insert("", "end", values=(nombre, placa), tags=(cedula, placa, nombre))
 
-    def cargar_deudas(cedula, placa):
-        tree_deudas.delete(*tree_deudas.get_children())
+    def actualizar_entry(entry, valor):
+        entry.config(state="normal")
+        entry.delete(0, tk.END)
+        entry.insert(0, f"{valor:.0f}")
+        entry.config(state="readonly")
+
+    def cargar_deudas(cedula, placa, entry_deudas, entry_actual, entry_abonos):
         total = 0
+        tree_deudas.delete(*tree_deudas.get_children())
         with engine.begin() as conn:
             stmt = select(tabla_otras_deudas).where(
                 tabla_otras_deudas.c.cedula == cedula,
@@ -2349,15 +2408,16 @@ def iniciar_ventana_deudas():
             ).order_by(tabla_otras_deudas.c.fecha_deuda.desc())
             for row in conn.execute(stmt):
                 tree_deudas.insert("", "end", values=(
-                    row.id, row.fecha_deuda, row.descripcion, f"$ {row.valor:,.0f}"
+                    row.id, row.fecha_deuda, row.descripcion, row.valor
                 ))
                 total += float(row.valor)
-        resumen_total_deudas.set(f"Total Deudas: $ {total:,.0f}")
-        actualizar_resumen()
+        actualizar_entry(entry_deudas, total)
+        print(f"Total Deudas: {total:.0f}")
+        actualizar_resumen(entry_deudas, entry_abonos, entry_actual)
 
-    def cargar_abonos(nombre, placa):
-        tree_abonos.delete(*tree_abonos.get_children())
+    def cargar_abonos(nombre, placa, entry_abonos, entry_actual, entry_deudas):
         total = 0
+        tree_abonos.delete(*tree_abonos.get_children())
         with engine.begin() as conn:
             stmt = select(
                 tabla_registros.c.fecha_registro,
@@ -2374,27 +2434,37 @@ def iniciar_ventana_deudas():
             ).order_by(tabla_registros.c.fecha_registro.desc())
             for row in conn.execute(stmt):
                 tree_abonos.insert("", "end", values=(
-                    row.fecha_registro, f"$ {row.saldos:,.0f}", row.motivo, row.tipo
+                    row.fecha_registro, row.saldos, row.motivo, row.tipo
                 ))
                 total += float(row.saldos)
-        resumen_total_abonos.set(f"Total Abonos: $ {total:,.0f}")
-        actualizar_resumen()
+        actualizar_entry(entry_abonos, total)
+        print(f"Total Abonos: {total:.0f}")
+        actualizar_resumen(entry_deudas, entry_abonos, entry_actual)
 
-    def actualizar_resumen():
+    def actualizar_resumen(entry_deudas, entry_abonos, entry_actual):
         try:
-            total_deuda = float(resumen_total_deudas.get().replace("Total Deudas: $ ", "").replace(",", ""))
-            total_abonos = float(resumen_total_abonos.get().replace("Total Abonos: $ ", "").replace(",", ""))
-            resumen_deuda_actual.set(f"Deuda Actual: $ {total_deuda - total_abonos:,.0f}")
-        except:
-            pass
+            deuda_str = entry_deudas.get().replace(",", "").replace("$", "").strip()
+            abonos_str = entry_abonos.get().replace(",", "").replace("$", "").strip()
+
+            if not deuda_str or not abonos_str:
+                print("[Aviso resumen] Uno de los campos está vacío, se omite la actualización.")
+                return
+
+            deuda = float(deuda_str)
+            abonos = float(abonos_str)
+            actual = deuda - abonos
+            actualizar_entry(entry_actual, actual)
+            print(f"Deuda Actual: {actual:.0f}")
+        except Exception as e:
+            print(f"[ERROR resumen] {e}")
 
     def on_cliente_dobleclick(event):
         selected = tree_clientes.focus()
         if not selected:
             return
         cedula, placa, nombre = tree_clientes.item(selected, "tags")
-        cargar_deudas(cedula, placa)
-        cargar_abonos(nombre, placa)
+        cargar_abonos(nombre, placa, entry_total_abonos, entry_deuda_actual, entry_total_deudas)
+        cargar_deudas(cedula, placa, entry_total_deudas, entry_deuda_actual, entry_total_abonos)
 
     def eliminar_deuda():
         selected = tree_deudas.selection()
@@ -2468,6 +2538,61 @@ def iniciar_ventana_deudas():
         entry_valor.pack(pady=3)
         tk.Button(top, text="Guardar", bg="#4CAF50", fg="white", command=guardar).pack(pady=10)
 
+    def ver_consolidado():
+        top = tk.Toplevel(ventana)
+        top.title("Consolidado por Placa")
+        top.geometry("600x500")
+        top.configure(bg="white")
+
+        cols = ("Placa", "Cliente", "Total Deudas", "Total Abonos", "Saldo Pendiente")
+        tree_consolidado = ttk.Treeview(top, columns=cols, show="headings", height=20)
+
+        for col in cols:
+            tree_consolidado.heading(col, text=col)
+            tree_consolidado.column(col, anchor="center")
+
+        scroll = ttk.Scrollbar(top, orient="vertical", command=tree_consolidado.yview)
+        tree_consolidado.configure(yscrollcommand=scroll.set)
+        tree_consolidado.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        top.grid_rowconfigure(0, weight=1)
+        top.grid_columnconfigure(0, weight=1)
+
+        with engine.begin() as conn:
+            stmt_clientes = select(
+                tabla_clientes.c.nombre,
+                tabla_clientes.c.placa,
+                tabla_clientes.c.cedula
+            ).distinct()
+
+            for nombre, placa, cedula in conn.execute(stmt_clientes):
+                # Total deudas
+                stmt_deudas = select(tabla_otras_deudas.c.valor).where(
+                    tabla_otras_deudas.c.placa == placa,
+                    tabla_otras_deudas.c.cedula == cedula
+                )
+                total_deudas = sum([float(row.valor) for row in conn.execute(stmt_deudas)])
+
+                # Total abonos
+                stmt_abonos = select(tabla_registros.c.saldos).where(
+                    tabla_registros.c.placa == placa,
+                    tabla_registros.c.nombre == nombre,
+                    tabla_registros.c.saldos > 0,
+                    tabla_registros.c.motivo.notin_(["N-a", "Multa"])
+                )
+                total_abonos = sum([float(row.saldos) for row in conn.execute(stmt_abonos)])
+
+                saldo_pendiente = total_deudas - total_abonos
+
+                tree_consolidado.insert("", "end", values=(
+                    placa,
+                    nombre,
+                    f"{total_deudas:.0f}",
+                    f"{total_abonos:.0f}",
+                    f"{saldo_pendiente:.0f}"
+                ))
+
     # --- INTERFAZ PRINCIPAL ---
     ventana = tk.Tk()
     ventana.title("Gestión de Deudas")
@@ -2475,43 +2600,83 @@ def iniciar_ventana_deudas():
     ventana.configure(bg="white")
 
     # --- Configuración general del grid ---
-    ventana.grid_rowconfigure(1, weight=1)
-    ventana.grid_columnconfigure(1, weight=1)
+    ventana.grid_rowconfigure(0, weight=0)  # Fila superior: filtros, botones, resumen
+    #ventana.grid_rowconfigure(1, weight=1)
+    ventana.grid_rowconfigure(1, weight=0)  # Intermedio si lo usas
+    ventana.grid_rowconfigure(2, weight=1)  # Área de expansión para clientes/abonos
 
-    # Panel superior (izquierda): Filtro + Botones + Resumen
+    ventana.grid_columnconfigure(1, weight=1)
+    ventana.grid_columnconfigure(0, weight=1)
+    
+    # Título principal
+    label_titulo = tk.Label(ventana, text="GESTIÓN DE DEUDAS", font=("Arial", 14, "bold"), bg="white", fg="#2c3e50")
+    label_titulo.grid(row=0, column=0, columnspan=2, pady=(10, 0))
+
+    # Panel superior (izquierda): Filtros + Botones + Resumen
     frame_izq_superior = tk.Frame(ventana, bg="white")
-    frame_izq_superior.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+    frame_izq_superior.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
     frame_izq_superior.grid_columnconfigure(0, weight=1)
 
-    # Filtro
-    frame_filtro = tk.Frame(frame_izq_superior, bg="white")
-    frame_filtro.grid(row=0, column=0, sticky="w", pady=2)
-    tk.Label(frame_filtro, text="Filtrar por nombre:", font=("Arial", 10, "bold"), bg="white").grid(row=0, column=0, sticky="w")
-    entry_filtro = tk.Entry(frame_filtro, width=40)
-    entry_filtro.grid(row=0, column=1, padx=10)
-    entry_filtro.bind("<KeyRelease>", lambda e: cargar_clientes(entry_filtro.get()))
+    # --- Filtro por nombre y placa ---
+    frame_filtro = tk.LabelFrame(frame_izq_superior, text="Filtros de búsqueda",
+        font=("Arial", 10, "bold"), fg="black", bg="white",
+        padx=10, pady=5, bd=1, relief="solid")
+    frame_filtro.grid(row=0, column=0, sticky="ew", pady=5)
 
-    # Botones de deuda
-    frame_botones = tk.Frame(frame_izq_superior, bg="white")
-    frame_botones.grid(row=1, column=0, sticky="w", pady=5)
-    tk.Button(frame_botones, text="➕ Agregar Deuda", bg="#3498db", fg="white", command=agregar_deuda).grid(row=0, column=0, padx=5)
-    tk.Button(frame_botones, text="🗑️ Eliminar Deuda", bg="#e74c3c", fg="white", command=eliminar_deuda).grid(row=0, column=1, padx=5)
+    tk.Label(frame_filtro, text="Filtrar por nombre:", font=("Arial", 10), bg="white").grid(row=0, column=0, sticky="nsew")
+    entry_filtro_nombre = tk.Entry(frame_filtro, width=30)
+    entry_filtro_nombre.grid(row=0, column=1, padx=(5, 15))
+
+    tk.Label(frame_filtro, text="Filtrar por placa:", font=("Arial", 10), bg="white").grid(row=0, column=2, sticky="nsew")
+    entry_filtro_placa = tk.Entry(frame_filtro, width=10)
+    entry_filtro_placa.grid(row=0, column=3, padx=(5, 0))
+
+    def actualizar_filtro_clientes(_event=None):
+        cargar_clientes(entry_filtro_nombre.get(), entry_filtro_placa.get())
+
+    entry_filtro_nombre.bind("<KeyRelease>", actualizar_filtro_clientes)
+    entry_filtro_placa.bind("<KeyRelease>", actualizar_filtro_clientes)
+
+    # --- Acciones + Resumen financiero ---
+    frame_acciones_resumen = tk.LabelFrame(frame_izq_superior, text="Opciones y Resumen",
+        font=("Arial", 10, "bold"), fg="black", bg="white",
+        padx=10, pady=10, bd=1, relief="solid")
+    frame_acciones_resumen.grid(row=1, column=0, sticky="nsew", pady=(10, 0), padx=0)
+    frame_acciones_resumen.grid_columnconfigure(1, weight=1)
+
+    # Botones
+    btn_agregar = tk.Button(frame_acciones_resumen, text="Agregar Deuda", bg="#3498db", fg="white", command=agregar_deuda)
+    btn_eliminar = tk.Button(frame_acciones_resumen, text="Eliminar Deuda", bg="#e74c3c", fg="white", command=eliminar_deuda)
+    btn_consolidado = tk.Button(frame_acciones_resumen, text="📊 Ver Consolidado", bg="#38c500", fg="white", command=ver_consolidado)
+    
+    btn_agregar.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    btn_eliminar.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+    btn_consolidado.grid(row=0, column=2, padx=5, pady=5, sticky="w")
 
     # Resumen
-    frame_resumen = tk.Frame(frame_izq_superior, bg="white")
-    frame_resumen.grid(row=2, column=0, sticky="w")
-    resumen_total_deudas = tk.StringVar()
-    resumen_total_abonos = tk.StringVar()
-    resumen_deuda_actual = tk.StringVar()
+    tk.Label(frame_acciones_resumen, text="Total Deudas:", font=("Arial", 9, "bold"),
+            bg="white", anchor="w").grid(row=1, column=0, sticky="w", pady=(10,0))
+    entry_total_deudas = tk.Entry(frame_acciones_resumen, font=("Arial", 10, "bold"),
+        fg="darkred", bg="white", bd=0, justify="right", state="readonly")
+    entry_total_deudas.grid(row=1, column=1, sticky="e", pady=(10,0))
 
-    for i, (text_var, fg) in enumerate(zip(
-        [resumen_total_deudas, resumen_total_abonos, resumen_deuda_actual],
-        ["darkred", "darkgreen", "blue"])):
-        tk.Label(frame_resumen, textvariable=text_var, font=("Arial", 10, "bold"), fg=fg, bg="white").grid(row=i, column=0, sticky="w", pady=1)
+    tk.Label(frame_acciones_resumen, text="Total Abonos:", font=("Arial", 9, "bold"),
+            bg="white", anchor="w").grid(row=2, column=0, sticky="w")
+    entry_total_abonos = tk.Entry(frame_acciones_resumen, font=("Arial", 10, "bold"),
+        fg="darkgreen", bg="white", bd=0, justify="right", state="readonly")
+    entry_total_abonos.grid(row=2, column=1, sticky="e")
 
-    # Panel superior derecho - Deudas
-    frame_deudas = tk.Frame(ventana, bg="white")
-    frame_deudas.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+    tk.Label(frame_acciones_resumen, text="Deuda Actual:", font=("Arial", 9, "bold"),
+            bg="white", anchor="w").grid(row=3, column=0, sticky="w")
+    entry_deuda_actual = tk.Entry(frame_acciones_resumen, font=("Arial", 10, "bold"),
+        fg="blue", bg="white", bd=0, justify="right", state="readonly")
+    entry_deuda_actual.grid(row=3, column=1, sticky="e")
+
+    # Panel derecho superior: Deudas
+    frame_deudas = tk.LabelFrame(ventana, text="Deudas Registradas",
+        font=("Arial", 10, "bold"), fg="black", bg="white",
+        padx=10, pady=5, bd=1, relief="solid")
+    frame_deudas.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
     frame_deudas.grid_rowconfigure(0, weight=1)
     frame_deudas.grid_columnconfigure(0, weight=1)
 
@@ -2523,13 +2688,14 @@ def iniciar_ventana_deudas():
 
     scroll_deudas = ttk.Scrollbar(frame_deudas, orient="vertical", command=tree_deudas.yview)
     tree_deudas.configure(yscrollcommand=scroll_deudas.set)
-
     tree_deudas.grid(row=0, column=0, sticky="nsew")
     scroll_deudas.grid(row=0, column=1, sticky="ns")
 
-    # Panel inferior izquierdo - Clientes
-    frame_clientes = tk.Frame(ventana, bg="white")
-    frame_clientes.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+    # Panel inferior izquierdo: Clientes
+    frame_clientes = tk.LabelFrame(ventana, text="Lista de Clientes",
+        font=("Arial", 10, "bold"), fg="black", bg="white",
+        padx=10, pady=5, bd=1, relief="solid")
+    frame_clientes.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
     frame_clientes.grid_rowconfigure(0, weight=1)
     frame_clientes.grid_columnconfigure(0, weight=1)
 
@@ -2541,15 +2707,15 @@ def iniciar_ventana_deudas():
 
     scroll_clientes = ttk.Scrollbar(frame_clientes, orient="vertical", command=tree_clientes.yview)
     tree_clientes.configure(yscrollcommand=scroll_clientes.set)
-
     tree_clientes.grid(row=0, column=0, sticky="nsew")
     scroll_clientes.grid(row=0, column=1, sticky="ns")
-
     tree_clientes.bind("<Double-1>", on_cliente_dobleclick)
 
-    # Panel inferior derecho - Abonos
-    frame_abonos = tk.Frame(ventana, bg="white")
-    frame_abonos.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
+    # Panel inferior derecho: Abonos
+    frame_abonos = tk.LabelFrame(ventana, text="Abonos Registrados",
+        font=("Arial", 10, "bold"), fg="black", bg="white",
+        padx=10, pady=5, bd=1, relief="solid")
+    frame_abonos.grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
     frame_abonos.grid_rowconfigure(0, weight=1)
     frame_abonos.grid_columnconfigure(0, weight=1)
 
@@ -2561,12 +2727,8 @@ def iniciar_ventana_deudas():
 
     scroll_abonos = ttk.Scrollbar(frame_abonos, orient="vertical", command=tree_abonos.yview)
     tree_abonos.configure(yscrollcommand=scroll_abonos.set)
-
     tree_abonos.grid(row=0, column=0, sticky="nsew")
     scroll_abonos.grid(row=0, column=1, sticky="ns")
-    # --- CARGAR CLIENTES AL INICIAR ---
-
-
     # Cargar inicial
     cargar_clientes()
 
@@ -2628,3 +2790,269 @@ def iniciar_consulta_multas():
     scroll_x.pack(side="bottom", fill="x")
 
     ventana.mainloop()
+
+def lanzar_editor_registros():
+    metadata = MetaData()
+    cuentas = Table("cuentas", metadata, autoload_with=engine)
+
+    def get_nombres_cuenta():
+        with Session(engine) as session:
+            stmt = select(cuentas.c.nombre_cuenta).order_by(cuentas.c.nombre_cuenta)
+            return [row[0] for row in session.execute(stmt).all()]
+
+    root = tk.Toplevel()
+    root.title("Consulta y Edición de Registros")
+    root.geometry("1100x700")
+    root.configure(padx=20, pady=20, bg="white")
+
+    tipos_motivo = ["N-a", "Inicial", "Otras deudas", "Multa"]
+    tipos_pago = ["Consignación", "Transfer Nequi", "Bancolombia", "Transfiya", "PTM", "Efectivo", "Ajuste P/P"]
+    editable_cols = ["valor", "saldos", "fecha_registro", "motivo", "tipo", "referencia"]
+    entries = {}
+    cuentas_list = get_nombres_cuenta()
+    selected_id = {"id": None}
+
+    # --- Panel de edición ---
+    edit_frame = tk.LabelFrame(root, text="Editar Registro", padx=10, pady=10, bg="white", font=("Arial", 11, "bold"))
+    edit_frame.pack(pady=5, fill="x")
+
+    field_grid = {
+        "valor": (0, 0),
+        "tipo": (1, 0),
+        "saldos": (0, 1),
+        "motivo": (1, 1),
+        "fecha_registro": (0, 2),
+        "referencia": (1, 2)
+    }
+
+    for field, (fila, columna) in field_grid.items():
+        tk.Label(edit_frame, text=field + ":", anchor="e", bg="white").grid(row=fila, column=columna * 2, sticky="e", padx=5, pady=3)
+
+        if field == "fecha_registro":
+            e = DateEntry(edit_frame, width=23, date_pattern="yyyy-mm-dd")
+        elif field == "motivo":
+            e = ttk.Combobox(edit_frame, width=23, values=tipos_motivo, state="readonly")
+        elif field == "tipo":
+            e = ttk.Combobox(edit_frame, width=23, values=tipos_pago, state="readonly")
+        else:
+            e = tk.Entry(edit_frame, width=25)
+
+        e.grid(row=fila, column=columna * 2 + 1, padx=5, pady=3)
+        entries[field] = e
+
+    # --- Botones de acción ---
+    def limpiar_seleccion():
+        for widget in entries.values():
+            if isinstance(widget, DateEntry):
+                widget.set_date(datetime.today())
+            elif isinstance(widget, ttk.Combobox):
+                widget.set('')
+            else:
+                widget.delete(0, tk.END)
+        selected_id["id"] = None
+        tree.selection_remove(tree.selection())
+
+    def eliminar_registro():
+        if not selected_id["id"]:
+            messagebox.showwarning("Sin selección", "Selecciona un registro para eliminar.", parent=root)
+            return
+        confirm = messagebox.askyesno("Confirmar eliminación", "¿Estás seguro de que deseas eliminar este registro?", parent=root)
+        if not confirm:
+            return
+        try:
+            with Session(engine) as session:
+                stmt = delete(registros).where(registros.c.id == int(selected_id["id"]))
+                session.execute(stmt)
+                session.commit()
+            messagebox.showinfo("Eliminado", "Registro eliminado correctamente.", parent=root)
+            limpiar_seleccion()
+            cargar_registros()
+        except SQLAlchemyError as e:
+            messagebox.showerror("Error SQL", str(e), parent=root)
+
+    botones_frame = tk.Frame(root, bg="white")
+    botones_frame.pack(pady=5)
+
+    def crear_boton(texto, comando, color="black", bg="#e0e0e0"):
+        return tk.Button(botones_frame, text=texto, command=comando, font=("Arial", 10, "bold"),
+                         bg=bg, fg=color, padx=12, pady=5, bd=1, relief="raised", cursor="hand2")
+
+    crear_boton("Guardar Cambios", lambda: guardar_cambios(), "white", "#4CAF50").pack(side="left", padx=10)
+    crear_boton("Eliminar Registro", eliminar_registro, "white", "#f44336").pack(side="left", padx=10)
+    crear_boton("Limpiar Selección", limpiar_seleccion, "black", "#FFEB3B").pack(side="left", padx=10)
+
+    # --- Filtro por fecha ---
+    frame_top = tk.Frame(root, bg="white")
+    frame_top.pack(pady=10)
+
+    tk.Label(frame_top, text="Fecha sistema:", font=("Arial", 10), bg="white").pack(side="left", padx=(0, 5))
+    fecha_selector = DateEntry(frame_top, date_pattern="yyyy-mm-dd")
+    fecha_selector.pack(side="left", padx=5)
+    tk.Button(frame_top, text="Buscar", command=lambda: cargar_registros(),
+              font=("Arial", 10), bg="#2196F3", fg="white", padx=10).pack(side="left", padx=10)
+
+    # --- Tabla de registros ---
+    cols = [
+        "id", "cedula", "nombre", "placa", "valor", "saldos",
+        "motivo", "tipo", "fecha_registro", "nombre_cuenta", "referencia"
+    ]
+
+    tree_frame = tk.Frame(root)
+    tree_frame.pack(pady=10, fill="both", expand=True)
+
+    tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=12)
+    for col in cols:
+        tree.heading(col, text=col)
+        tree.column(col, anchor="center", width=100)
+    tree.pack(side="left", fill="both", expand=True)
+
+    scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+    scrollbar.pack(side="right", fill="y")
+    tree.configure(yscrollcommand=scrollbar.set)
+
+    # --- Funciones auxiliares ---
+    def cargar_registros():
+        tree.delete(*tree.get_children())
+        fecha = fecha_selector.get_date()
+        with Session(engine) as session:
+            stmt = select(registros).where(registros.c.fecha_sistema == fecha)
+            resultados = session.execute(stmt).mappings().all()
+
+            if not resultados:
+                messagebox.showinfo("Sin datos", f"No hay registros para {fecha.strftime('%Y-%m-%d')}", parent=root)
+                return
+
+            for fila in resultados:
+                tree.insert("", "end", values=[fila[col] for col in cols])
+
+    def on_double_click(event):
+        item = tree.selection()
+        if not item:
+            return
+        datos = tree.item(item[0], "values")
+        selected_id["id"] = datos[0]
+
+        for i, field in enumerate(cols[1:]):
+            if field in editable_cols:
+                widget = entries[field]
+                value = datos[i + 1]
+                if isinstance(widget, DateEntry):
+                    try:
+                        widget.set_date(datetime.strptime(value, "%Y-%m-%d").date())
+                    except:
+                        widget.set_date(datetime.today())
+                elif isinstance(widget, ttk.Combobox):
+                    widget.set(value)
+                else:
+                    widget.delete(0, tk.END)
+                    widget.insert(0, value)
+
+    tree.bind("<Double-1>", on_double_click)
+
+    def guardar_cambios():
+        if not selected_id["id"]:
+            messagebox.showwarning("Sin selección", "Selecciona un registro para editar.", parent=root)
+            return
+
+        try:
+            data = {f: entries[f].get() for f in editable_cols}
+
+            valores = {
+                "valor": float(data["valor"]),
+                "saldos": float(data["saldos"]),
+                "fecha_registro": entries["fecha_registro"].get_date(),
+                "motivo": data["motivo"],
+                "tipo": data["tipo"],
+                "referencia": data["referencia"]
+            }
+
+            with Session(engine) as session:
+                stmt = (
+                    update(registros)
+                    .where(registros.c.id == int(selected_id["id"]))
+                    .values(**valores)
+                )
+                session.execute(stmt)
+                session.commit()
+                messagebox.showinfo("Éxito", "Registro actualizado correctamente.", parent=root)
+                cargar_registros()
+
+        except SQLAlchemyError as e:
+            messagebox.showerror("Error SQL", str(e), parent=root)
+        except ValueError:
+            messagebox.showerror("Error", "Verifica que los campos 'valor', 'saldos' y 'fecha_registro' sean válidos.", parent=root)
+
+    root.mainloop()
+
+
+def normalizar_placa(placa):
+    placa = placa.upper().strip()
+    match = re.match(r'^([A-Z]{3}\d{2,3}[A-Z]?)', placa)
+    return match.group(1) if match else placa
+
+def formato_pesos(valor):
+    return f"${int(round(valor)):,.0f}".replace(",", ".")
+
+def lanzar_resumen_placas():
+    ventana_resumen = tk.Toplevel()
+    ventana_resumen.title("Resumen por placa (agrupadas)")
+    ventana_resumen.geometry("600x500")
+    ventana_resumen.configure(bg="white", padx=20, pady=20)
+
+    # --- Tabla Treeview ---
+    cols = ("placa_base", "total_valor", "total_saldos_inicial")
+    tree = ttk.Treeview(ventana_resumen, columns=cols, show="headings", height=20)
+    for col in cols:
+        tree.heading(col, text=col)
+        tree.column(col, anchor="center", width=180)
+    tree.pack(fill="both", expand=True)
+
+    # --- Consulta y carga ---
+    def cargar_datos():
+        tree.delete(*tree.get_children())
+        placas_dict = {}
+
+        with Session(engine) as session:
+            stmt = select(
+                registros.c.placa,
+                registros.c.valor,
+                registros.c.saldos,
+                registros.c.motivo
+            ).where(registros.c.placa != None)
+            resultados = session.execute(stmt).all()
+
+            for placa, valor, saldos, motivo in resultados:
+                base = normalizar_placa(placa)
+
+                if base not in placas_dict:
+                    placas_dict[base] = {"valor": 0, "saldos_inicial": 0}
+
+                placas_dict[base]["valor"] += float(valor or 0)
+                if motivo == "Inicial":
+                    placas_dict[base]["saldos_inicial"] += float(saldos or 0)
+
+        # Ordenar por total valor descendente
+        ordenado = sorted(placas_dict.items(), key=lambda x: x[1]["valor"], reverse=True)
+
+        for placa, datos in ordenado:
+            tree.insert("", "end", values=(
+                placa,
+                formato_pesos(datos["valor"]),
+                formato_pesos(datos["saldos_inicial"])
+            ))
+
+    # --- Botón de carga ---
+    btn_frame = tk.Frame(ventana_resumen, bg="white")
+    btn_frame.pack(pady=10)
+    tk.Button(
+        btn_frame,
+        text="Actualizar resumen",
+        font=("Arial", 10, "bold"),
+        bg="#4CAF50",
+        fg="white",
+        padx=10,
+        pady=5,
+        command=cargar_datos
+    ).pack()
+
+    cargar_datos()
