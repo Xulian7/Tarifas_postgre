@@ -665,28 +665,39 @@ def abrir_ventana_clientes():
         if not os.path.exists(plantilla_path):
             return None  # ⛔ No hay plantilla
 
+        # Cargar plantilla
         doc = Document(plantilla_path)
 
+        # Reemplazar en párrafos
         for p in doc.paragraphs:
             for key, val in valores_dict.items():
                 p.text = p.text.replace(f"{{{key}}}", str(val))
 
+        # Reemplazar en tablas
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for key, val in valores_dict.items():
                         cell.text = cell.text.replace(f"{{{key}}}", str(val))
 
+        # Guardar archivo temporal
         temp_docx = os.path.join(tempfile.gettempdir(), "contrato_temp.docx")
         doc.save(temp_docx)
 
-        os.makedirs("contratos", exist_ok=True)
+        # Ruta: Escritorio/contratos
+        escritorio = os.path.join(os.path.expanduser("~"), "Desktop")
+        ruta_contratos = os.path.join(escritorio, "contratos")
+        os.makedirs(ruta_contratos, exist_ok=True)
+
+        # Nombre del archivo de salida
         nombre = valores_dict["NOMBRE"].replace(" ", "")
         placa = valores_dict["PLACA"].replace(" ", "").upper()
-        salida_pdf = f"contratos/Contrato {nombre} {placa}.pdf"
+        salida_pdf = os.path.join(ruta_contratos, f"Contrato {nombre} {placa}.pdf")
 
+        # Convertir a PDF
         convert(temp_docx, salida_pdf)
         return salida_pdf
+
 
     def registrar_cliente():
         # Obtener valores de los campos
@@ -1825,7 +1836,13 @@ def generar_resumen_por_cuenta(df):
 
         # ---------- Fila de "Tarifas" ----------
         total_valor = df_cuenta['valor'].sum()
-        resultado.append((cuenta, "Tarifas", f"{total_valor:,.0f}", "0"))
+        resultado.append((
+            cuenta,
+            "Tarifas",
+            f"{total_valor:,.0f}",
+            "0",
+            f"{total_valor:,.0f}"
+        ))
 
         # ---------- Motivos desde columna 'motivo' pero sumando solo saldos ----------
         df_saldos_motivos = (
@@ -1836,20 +1853,40 @@ def generar_resumen_por_cuenta(df):
 
         for _, row in df_saldos_motivos.iterrows():
             if row["motivo"] != "Tarifas":  # Evitar duplicar la fila de Tarifas
-                resultado.append((cuenta, row["motivo"], "0", f"{row['saldos']:,.0f}"))
+                resultado.append((
+                    cuenta,
+                    row["motivo"],
+                    "0",
+                    f"{row['saldos']:,.0f}",
+                    f"{row['saldos']:,.0f}"
+                ))
 
         # ---------- Subtotales de la cuenta ----------
         subtotal_valor = total_valor
         subtotal_saldos = df_saldos_motivos['saldos'].sum()
+        subtotal_total = subtotal_valor + subtotal_saldos
 
-        resultado.append((cuenta, "TOTAL CUENTA", f"{subtotal_valor:,.0f}", f"{subtotal_saldos:,.0f}"))
-        resultado.append(("", "", "", ""))  # Línea vacía
+        resultado.append((
+            cuenta,
+            "TOTAL CUENTA",
+            f"{subtotal_valor:,.0f}",
+            f"{subtotal_saldos:,.0f}",
+            f"{subtotal_total:,.0f}"
+        ))
+        resultado.append(("", "", "", "", ""))  # Línea vacía
 
         total_general_valor += subtotal_valor
         total_general_saldos += subtotal_saldos
 
     # ---------- Total general ----------
-    resultado.append(("TOTAL GENERAL", "", f"{total_general_valor:,.0f}", f"{total_general_saldos:,.0f}"))
+    total_general = total_general_valor + total_general_saldos
+    resultado.append((
+        "TOTAL GENERAL",
+        "",
+        f"{total_general_valor:,.0f}",
+        f"{total_general_saldos:,.0f}",
+        f"{total_general:,.0f}"
+    ))
     return resultado
 
 # ---------- Crear interfaz ----------------------
@@ -1882,10 +1919,10 @@ def crear_resumen_por_cuenta_y_motivo():
     btn_captura = tk.Button(frame_top, text="📸 Capturar")
     btn_captura.pack(side="left", padx=10, pady=5)
 
-    tree = ttk.Treeview(ventana, columns=["Cuenta", "Motivo", "Total Valor", "Total Saldos"], show="headings")
-    for col in ["Cuenta", "Motivo", "Total Valor", "Total Saldos"]:
+    tree = ttk.Treeview(ventana, columns=["Cuenta", "Motivo", "Total Valor", "Total Saldos", "TOTAL"], show="headings")
+    for col in ["Cuenta", "Motivo", "Total Valor", "Total Saldos", "TOTAL"]:
         tree.heading(col, text=col)
-        tree.column(col, anchor="center", width=200)
+        tree.column(col, anchor="center", width=180)
     tree.pack(fill="both", expand=True)
 
     scrollbar_y = ttk.Scrollbar(ventana, orient="vertical", command=tree.yview)
@@ -2213,7 +2250,6 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
 
     btn_generar = tk.Button(frame_principal, text="Reporte recogidas", command=generar_nuevo_tree)
     btn_generar.grid(row=2, column=1, pady=5, sticky="w", padx=10)
-
 
 
 # ---------- Función para ordenar columnas en TreeView ----------

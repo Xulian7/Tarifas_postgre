@@ -456,7 +456,7 @@ btn_clientes.grid(row=1, column=1, padx=3, pady=3, sticky="ew")
 btn_extracto = tk.Button(frame_botones, text=" Extracto", image=cargar_imagen("Extracto"), compound="left", width=ancho_widget, command=lambda: mostrar_registros(entry_cedula))
 btn_extracto.grid(row=1, column=2, padx=3, pady=3, sticky="ew")
 
-btn_mora = tk.Button(frame_botones, text=" Reporte Deudas", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
+btn_mora = tk.Button(frame_botones, text=" Reporte atrasos", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
 btn_mora.grid(row=2, column=0, padx=3, pady=3, sticky="ew")
 
 btn_propietario = tk.Button(frame_botones, text=" Aliados", image=cargar_imagen("llave"), compound="left" , width=ancho_widget,  command=ventana_propietario)
@@ -479,6 +479,11 @@ btn_editor.grid(row=4, column=0, padx=3, pady=3, sticky="ew")
 
 btn_placas = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
 btn_placas.grid(row=4, column=1, padx=3, pady=3, sticky="ew")
+
+btn_caja = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
+btn_caja.grid(row=4, column=1, padx=3, pady=3, sticky="ew")
+
+
 
 
 
