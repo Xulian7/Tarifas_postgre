@@ -2827,6 +2827,7 @@ def iniciar_consulta_multas():
 
     ventana.mainloop()
 
+# ---------- Función para lanzar el editor de registros ----------
 def lanzar_editor_registros():
     metadata = MetaData()
     cuentas = Table("cuentas", metadata, autoload_with=engine)
@@ -2936,15 +2937,35 @@ def lanzar_editor_registros():
     tree_frame = tk.Frame(root)
     tree_frame.pack(pady=10, fill="both", expand=True)
 
+    def ordenar_columna(treeview, col, reversa):
+        datos = [(treeview.set(k, col), k) for k in treeview.get_children('')]
+
+        # Intentar conversión numérica si aplica
+        try:
+            datos.sort(key=lambda t: float(t[0].replace("$", "").replace(",", "")), reverse=reversa)
+        except ValueError:
+            datos.sort(key=lambda t: t[0].lower(), reverse=reversa)
+
+        for index, (val, k) in enumerate(datos):
+            treeview.move(k, '', index)
+
+        # Alternar orden en el siguiente clic
+        treeview.heading(col, command=lambda: ordenar_columna(treeview, col, not reversa))
+
+
+    # --- Tu parte original con la modificación incluida ---
     tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=12)
+
     for col in cols:
-        tree.heading(col, text=col)
+        tree.heading(col, text=col, command=lambda c=col: ordenar_columna(tree, c, False))  # Click ordenable
         tree.column(col, anchor="center", width=100)
+
     tree.pack(side="left", fill="both", expand=True)
 
     scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
     scrollbar.pack(side="right", fill="y")
     tree.configure(yscrollcommand=scrollbar.set)
+
 
     # --- Funciones auxiliares ---
     def cargar_registros():

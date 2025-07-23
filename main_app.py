@@ -13,6 +13,7 @@ from conexion import engine
 from conexion import clientes as tabla_clientes
 from conexion import registros as tabla_registros
 from conexion import propietario as tabla_propietario
+from conexion import otras_deudas as tabla_otras_deudas
 from num2words import num2words
 
 datos_cargados = []  # Variable global para guardar los datos de tree
@@ -48,9 +49,12 @@ ancho_widget = 30 # ajustar este valor según necesidades
 frame_formulario = tk.Frame(frame_izquierdo, bd=2, relief="solid")
 frame_formulario.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
+cedula_var = tk.StringVar()
+placa_var = tk.StringVar()
+
 # Campos del formulario organizados en filas
 tk.Label(frame_formulario, text="Cédula:").grid(row=0, column=0, padx=5, pady=3, sticky="e")
-entry_cedula = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
+entry_cedula = tk.Entry(frame_formulario, textvariable=cedula_var, width=ancho_widget, justify="center")
 entry_cedula.grid(row=0, column=1, padx=5, pady=3, sticky="w")
 
 tk.Label(frame_formulario, text="Nombre:").grid(row=1, column=0, padx=5, pady=3, sticky="e")
@@ -93,8 +97,54 @@ def actualizar_sugerencias(event):
 entry_nombre.bind("<KeyRelease>", actualizar_sugerencias)
 
 tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=3, sticky="e")
-entry_placa = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
+entry_placa = tk.Entry(frame_formulario, textvariable=placa_var, width=ancho_widget, justify="center")
 entry_placa.grid(row=2, column=1, padx=5, pady=3, sticky="w")
+
+# Función para obtener las deudas totales
+def obtener_deudas_totales(entry_cedula, entry_placa):
+    with engine.connect() as conn:
+        # Consulta en tabla_registros donde motivo = 'Otras deudas'
+        query_registros = select(func.coalesce(func.sum(tabla_registros.c.saldos), 0)).where(
+            tabla_registros.c.cedula == entry_cedula,
+            tabla_registros.c.placa == entry_placa,
+            tabla_registros.c.motivo.in_(["Otras deudas", "Inicial"])
+        )
+        resultado_registros = conn.execute(query_registros).scalar()
+
+        # Consulta en tabla_otras_deudas
+        query_otras_deudas = select(func.coalesce(func.sum(tabla_otras_deudas.c.valor), 0)).where(
+            tabla_otras_deudas.c.cedula == entry_cedula,
+            tabla_otras_deudas.c.placa == entry_placa
+        )
+        resultado_otras_deudas = conn.execute(query_otras_deudas).scalar()
+
+        print(f"Resultados obtenidos: Registros={resultado_registros}, Otras Deudas={resultado_otras_deudas}")
+        return resultado_registros, resultado_otras_deudas
+
+# Función que actualiza el resultado automáticamente
+def actualizar_deudas(*args):
+    cedula = cedula_var.get()
+    placa = placa_var.get()
+
+    if cedula and placa:
+        try:
+            saldos_registros, valor_otras = obtener_deudas_totales(cedula, placa)
+            total = -saldos_registros + valor_otras
+            entry_deuda_taller.configure(state="normal")
+            entry_deuda_taller.delete(0, tk.END)
+            entry_deuda_taller.insert(0, f"{total:,.0f}")
+            entry_deuda_taller.configure(state="readonly")
+        except Exception as e:
+            print(f"Error al consultar deudas: {e}")
+            entry_deuda_taller.configure(state="normal") 
+            entry_deuda_taller.delete(0, tk.END)
+            entry_deuda_taller.insert(0, "Error")
+            entry_deuda_taller.configure(state="readonly")
+    else:
+        entry_deuda_taller.configure(state="normal")
+        entry_deuda_taller.delete(0, tk.END)
+        entry_deuda_taller.insert(0, "")
+        entry_deuda_taller.configure(state="readonly")
 
 # Función para actualizar las sugerencias de placas
 def actualizar_sugerencias_por_placa(event):
@@ -327,6 +377,13 @@ verificada_opciones = ["", "Si", "No"]
 combo_verificada = ttk.Combobox(frame_formulario, values=verificada_opciones, state="readonly", width=ancho_widget)
 combo_verificada.grid(row=5, column=4, padx=5, pady=3, sticky="w")
 combo_verificada.set("No")  # Establecer "No" como valor por defecto
+
+tk.Label(frame_formulario, text="Otras_deudas:").grid(row=6, column=3, padx=5, pady=3, sticky="e")
+entry_deuda_taller = tk.Entry(frame_formulario, width=33, justify="center", state="readonly")
+entry_deuda_taller.grid(row=6, column=4, padx=5, pady=3, sticky="w")
+# Vincular las entradas con el actualizador
+cedula_var.trace_add("write", actualizar_deudas)
+placa_var.trace_add("write", actualizar_deudas)
 
 # Función para cargar imágenes con tamaño uniforme
 imagenes = {}
