@@ -4,7 +4,6 @@ from tkcalendar import DateEntry
 import os, sys
 from datetime import datetime
 from PIL import Image, ImageTk
-from tkinter import PhotoImage
 from logica import *  
 import pyautogui
 from sqlalchemy import update, select, func
@@ -14,7 +13,9 @@ from conexion import clientes as tabla_clientes
 from conexion import registros as tabla_registros
 from conexion import propietario as tabla_propietario
 from conexion import otras_deudas as tabla_otras_deudas
+from conexion import usuarios as tabla_usuarios
 from num2words import num2words
+from PIL import Image, ImageTk
 
 datos_cargados = []  # Variable global para guardar los datos de tree
 # Función para cargar las opciones de cuentas disponibles en la DB
@@ -22,716 +23,799 @@ nequi_opciones = cargar_nequi_opciones()
 # Variable global para saber qué Entry se actualizó por último
 ultimo_entry = None
 
-def get_resource_path(relative_path):
-    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
+def launch_main_app(nivel, usuario):
 
-# Crear ventana principal
-ventana = tk.Tk()
-ventana.title("Registro de Tarifas")
-ventana.geometry("800x500")
-icono_path = get_resource_path(os.path.join("img", "inicio.ico"))
-if os.path.exists(icono_path):
-    ventana.iconbitmap(icono_path)
-else:
-    print("No se encontró el icono en la ruta especificada")
+    def get_resource_path(relative_path):
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base_path, relative_path)
 
-# Frame para el formulario y los botones
-frame_superior = tk.Frame(ventana, bd=2, relief="groove", bg="#f0f0f0")
-frame_superior.grid(row=0, column=0, sticky="nsew", padx=1, pady=1) 
-
-# Frame izquierdo que contendrá formulario y botones
-frame_izquierdo = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
-frame_izquierdo.grid(row=0, column=0, sticky="nsew", padx=5, pady=5) 
-# Definir el ancho común para todos los widgets
-ancho_widget = 30 # ajustar este valor según necesidades
-# Crear Frame para el formulario
-frame_formulario = tk.Frame(frame_izquierdo, bd=2, relief="solid")
-frame_formulario.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-
-cedula_var = tk.StringVar()
-placa_var = tk.StringVar()
-
-# Campos del formulario organizados en filas
-tk.Label(frame_formulario, text="Cédula:").grid(row=0, column=0, padx=5, pady=3, sticky="e")
-entry_cedula = tk.Entry(frame_formulario, textvariable=cedula_var, width=ancho_widget, justify="center")
-entry_cedula.grid(row=0, column=1, padx=5, pady=3, sticky="w")
-
-tk.Label(frame_formulario, text="Nombre:").grid(row=1, column=0, padx=5, pady=3, sticky="e")
-entry_nombre = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_nombre.grid(row=1, column=1, padx=5, pady=3, sticky="w")
-
-# Función para actualizar las sugerencias de nombres
-def actualizar_sugerencias(event):
-    texto = entry_nombre.get()
-    listbox_sugerencias.delete(0, tk.END)
-
-    if not texto:
-        listbox_sugerencias.grid_forget()
-        return
-
-    try:
-        with engine.connect() as conn:
-            stmt = (
-                select(tabla_clientes.c.nombre)
-                .where(tabla_clientes.c.nombre.ilike(f"%{texto}%"))
-                .order_by(func.length(tabla_clientes.c.nombre))
-                .limit(5)
-            )
-            resultados = conn.execute(stmt).fetchall()
-    except Exception as e:
-        print(f"Error al conectar a la base de datos: {e}")
-        return
-
-    if resultados:
-        for nombre in resultados:
-            listbox_sugerencias.insert(tk.END, nombre[0])
-        listbox_sugerencias.grid(row=0, column=0, sticky="nsew")
-        frame_sugerencias.grid_rowconfigure(0, weight=1)
-        frame_sugerencias.grid_columnconfigure(0, weight=1)
-        frame_sugerencias.grid()
+    # Crear ventana principal
+    ventana = tk.Tk()
+    ventana.title(f"Gestion Cobros - Usuario: {usuario} | Nivel: {nivel}")
+    ventana.geometry("800x500")
+    icono_path = get_resource_path(os.path.join("img", "inicio.ico"))
+    if os.path.exists(icono_path):
+        ventana.iconbitmap(icono_path)
     else:
-        listbox_sugerencias.grid_forget()
+        print("No se encontró el icono en la ruta especificada")
 
-        
-entry_nombre.bind("<KeyRelease>", actualizar_sugerencias)
+    # Frame para el formulario y los botones
+    frame_superior = tk.Frame(ventana, bd=2, relief="groove", bg="#f0f0f0")
+    frame_superior.grid(row=0, column=0, sticky="nsew", padx=1, pady=1) 
 
-tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=3, sticky="e")
-entry_placa = tk.Entry(frame_formulario, textvariable=placa_var, width=ancho_widget, justify="center")
-entry_placa.grid(row=2, column=1, padx=5, pady=3, sticky="w")
+    # Frame izquierdo que contendrá formulario y botones
+    frame_izquierdo = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
+    frame_izquierdo.grid(row=0, column=0, sticky="nsew", padx=5, pady=5) 
+    # Definir el ancho común para todos los widgets
+    ancho_widget = 30 # ajustar este valor según necesidades
+    # Crear Frame para el formulario
+    frame_formulario = tk.Frame(frame_izquierdo, bd=2, relief="solid")
+    frame_formulario.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
-# Función para obtener las deudas totales
-def obtener_deudas_totales(entry_cedula, entry_placa):
-    with engine.connect() as conn:
-        # Consulta en tabla_registros donde motivo = 'Otras deudas'
-        query_registros = select(func.coalesce(func.sum(tabla_registros.c.saldos), 0)).where(
-            tabla_registros.c.cedula == entry_cedula,
-            tabla_registros.c.placa == entry_placa,
-            tabla_registros.c.motivo.in_(["Otras deudas", "Inicial"])
-        )
-        resultado_registros = conn.execute(query_registros).scalar()
+    cedula_var = tk.StringVar()
+    placa_var = tk.StringVar()
 
-        # Consulta en tabla_otras_deudas
-        query_otras_deudas = select(func.coalesce(func.sum(tabla_otras_deudas.c.valor), 0)).where(
-            tabla_otras_deudas.c.cedula == entry_cedula,
-            tabla_otras_deudas.c.placa == entry_placa
-        )
-        resultado_otras_deudas = conn.execute(query_otras_deudas).scalar()
+    # Campos del formulario organizados en filas
+    tk.Label(frame_formulario, text="Cédula:").grid(row=0, column=0, padx=5, pady=3, sticky="e")
+    entry_cedula = tk.Entry(frame_formulario, textvariable=cedula_var, width=ancho_widget, justify="center")
+    entry_cedula.grid(row=0, column=1, padx=5, pady=3, sticky="w")
 
-        print(f"Resultados obtenidos: Registros={resultado_registros}, Otras Deudas={resultado_otras_deudas}")
-        return resultado_registros, resultado_otras_deudas
+    tk.Label(frame_formulario, text="Nombre:").grid(row=1, column=0, padx=5, pady=3, sticky="e")
+    entry_nombre = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
+    entry_nombre.grid(row=1, column=1, padx=5, pady=3, sticky="w")
 
-# Función que actualiza el resultado automáticamente
-def actualizar_deudas(*args):
-    cedula = cedula_var.get()
-    placa = placa_var.get()
+    # Función para actualizar las sugerencias de nombres
+    def actualizar_sugerencias(event):
+        texto = entry_nombre.get()
+        listbox_sugerencias.delete(0, tk.END)
 
-    if cedula and placa:
-        try:
-            saldos_registros, valor_otras = obtener_deudas_totales(cedula, placa)
-            total = -saldos_registros + valor_otras
-            entry_deuda_taller.configure(state="normal")
-            entry_deuda_taller.delete(0, tk.END)
-            entry_deuda_taller.insert(0, f"{total:,.0f}")
-            entry_deuda_taller.configure(state="readonly")
-        except Exception as e:
-            print(f"Error al consultar deudas: {e}")
-            entry_deuda_taller.configure(state="normal") 
-            entry_deuda_taller.delete(0, tk.END)
-            entry_deuda_taller.insert(0, "Error")
-            entry_deuda_taller.configure(state="readonly")
-    else:
-        entry_deuda_taller.configure(state="normal")
-        entry_deuda_taller.delete(0, tk.END)
-        entry_deuda_taller.insert(0, "")
-        entry_deuda_taller.configure(state="readonly")
-
-# Función para actualizar las sugerencias de placas
-def actualizar_sugerencias_por_placa(event):
-    texto = entry_placa.get().strip().upper()
-    listbox_sugerencias.delete(0, tk.END)
-
-    if len(texto) < 3:
-        listbox_sugerencias.grid_forget()
-        return
-
-    try:
-        with engine.connect() as conn:
-            stmt = (
-                select(tabla_clientes.c.nombre)
-                .where(func.upper(tabla_clientes.c.placa).like(texto + '%'))
-                .order_by(func.length(tabla_clientes.c.placa))
-                .limit(3)
-            )
-            resultados = conn.execute(stmt).fetchall()
-    except Exception as e:
-        print(f"💥 Error al conectar con PostgreSQL: {e}")
-        return
-
-    if resultados:
-        for nombre in resultados:
-            listbox_sugerencias.insert(tk.END, nombre[0])
-        listbox_sugerencias.grid(row=1, column=0, sticky="nsew")
-        frame_sugerencias.grid_rowconfigure(1, weight=1)
-        frame_sugerencias.grid_columnconfigure(0, weight=1)
-        frame_sugerencias.grid()
-    else:
-        listbox_sugerencias.grid_forget()
-
-entry_placa.bind("<KeyRelease>", actualizar_sugerencias_por_placa)
-
-# Crear la función para seleccionar la sugerencia y actualizar los otros campos
-def seleccionar_sugerencia(event):
-    seleccion = listbox_sugerencias.curselection()
-    
-    if seleccion:
-        nombre_seleccionado = listbox_sugerencias.get(seleccion)
-        
-        entry_nombre.delete(0, tk.END)
-        entry_nombre.insert(0, nombre_seleccionado)
+        if not texto:
+            listbox_sugerencias.grid_forget()
+            return
 
         try:
             with engine.connect() as conn:
                 stmt = (
-                    select(tabla_clientes.c.cedula, tabla_clientes.c.placa)
-                    .where(tabla_clientes.c.nombre == nombre_seleccionado)
+                    select(tabla_clientes.c.nombre)
+                    .where(tabla_clientes.c.nombre.ilike(f"%{texto}%"))
+                    .order_by(func.length(tabla_clientes.c.nombre))
+                    .limit(5)
+                )
+                resultados = conn.execute(stmt).fetchall()
+        except Exception as e:
+            print(f"Error al conectar a la base de datos: {e}")
+            return
+
+        if resultados:
+            for nombre in resultados:
+                listbox_sugerencias.insert(tk.END, nombre[0])
+            listbox_sugerencias.grid(row=0, column=0, sticky="nsew")
+            frame_sugerencias.grid_rowconfigure(0, weight=1)
+            frame_sugerencias.grid_columnconfigure(0, weight=1)
+            frame_sugerencias.grid()
+        else:
+            listbox_sugerencias.grid_forget()
+
+            
+    entry_nombre.bind("<KeyRelease>", actualizar_sugerencias)
+
+    tk.Label(frame_formulario, text="Placa:").grid(row=2, column=0, padx=5, pady=3, sticky="e")
+    entry_placa = tk.Entry(frame_formulario, textvariable=placa_var, width=ancho_widget, justify="center")
+    entry_placa.grid(row=2, column=1, padx=5, pady=3, sticky="w")
+
+    # Función para obtener las deudas totales
+    def obtener_deudas_totales(entry_cedula, entry_placa):
+        with engine.connect() as conn:
+            # Consulta en tabla_registros donde motivo = 'Otras deudas'
+            query_registros = select(func.coalesce(func.sum(tabla_registros.c.saldos), 0)).where(
+                tabla_registros.c.cedula == entry_cedula,
+                tabla_registros.c.placa == entry_placa,
+                tabla_registros.c.motivo.in_(["Otras deudas", "Inicial"])
+            )
+            resultado_registros = conn.execute(query_registros).scalar()
+
+            # Consulta en tabla_otras_deudas
+            query_otras_deudas = select(func.coalesce(func.sum(tabla_otras_deudas.c.valor), 0)).where(
+                tabla_otras_deudas.c.cedula == entry_cedula,
+                tabla_otras_deudas.c.placa == entry_placa
+            )
+            resultado_otras_deudas = conn.execute(query_otras_deudas).scalar()
+
+            print(f"Resultados obtenidos: Registros={resultado_registros}, Otras Deudas={resultado_otras_deudas}")
+            return resultado_registros, resultado_otras_deudas
+
+    # Función que actualiza el resultado automáticamente
+    def actualizar_deudas(*args):
+        cedula = cedula_var.get()
+        placa = placa_var.get()
+
+        if cedula and placa:
+            try:
+                saldos_registros, valor_otras = obtener_deudas_totales(cedula, placa)
+                total = -saldos_registros + valor_otras
+                entry_deuda_taller.configure(state="normal")
+                entry_deuda_taller.delete(0, tk.END)
+                entry_deuda_taller.insert(0, f"{total:,.0f}")
+                entry_deuda_taller.configure(state="readonly")
+            except Exception as e:
+                print(f"Error al consultar deudas: {e}")
+                entry_deuda_taller.configure(state="normal") 
+                entry_deuda_taller.delete(0, tk.END)
+                entry_deuda_taller.insert(0, "Error")
+                entry_deuda_taller.configure(state="readonly")
+        else:
+            entry_deuda_taller.configure(state="normal")
+            entry_deuda_taller.delete(0, tk.END)
+            entry_deuda_taller.insert(0, "")
+            entry_deuda_taller.configure(state="readonly")
+
+    # Función para actualizar las sugerencias de placas
+    def actualizar_sugerencias_por_placa(event):
+        texto = entry_placa.get().strip().upper()
+        listbox_sugerencias.delete(0, tk.END)
+
+        if len(texto) < 3:
+            listbox_sugerencias.grid_forget()
+            return
+
+        try:
+            with engine.connect() as conn:
+                stmt = (
+                    select(tabla_clientes.c.nombre)
+                    .where(func.upper(tabla_clientes.c.placa).like(texto + '%'))
+                    .order_by(func.length(tabla_clientes.c.placa))
+                    .limit(3)
+                )
+                resultados = conn.execute(stmt).fetchall()
+        except Exception as e:
+            print(f"💥 Error al conectar con PostgreSQL: {e}")
+            return
+
+        if resultados:
+            for nombre in resultados:
+                listbox_sugerencias.insert(tk.END, nombre[0])
+            listbox_sugerencias.grid(row=1, column=0, sticky="nsew")
+            frame_sugerencias.grid_rowconfigure(1, weight=1)
+            frame_sugerencias.grid_columnconfigure(0, weight=1)
+            frame_sugerencias.grid()
+        else:
+            listbox_sugerencias.grid_forget()
+
+    entry_placa.bind("<KeyRelease>", actualizar_sugerencias_por_placa)
+
+    # Crear la función para seleccionar la sugerencia y actualizar los otros campos
+    def seleccionar_sugerencia(event):
+        seleccion = listbox_sugerencias.curselection()
+        
+        if seleccion:
+            nombre_seleccionado = listbox_sugerencias.get(seleccion)
+            
+            entry_nombre.delete(0, tk.END)
+            entry_nombre.insert(0, nombre_seleccionado)
+
+            try:
+                with engine.connect() as conn:
+                    stmt = (
+                        select(tabla_clientes.c.cedula, tabla_clientes.c.placa)
+                        .where(tabla_clientes.c.nombre == nombre_seleccionado)
+                    )
+                    resultado = conn.execute(stmt).fetchone()
+
+                    if resultado:
+                        cedula, placa = resultado
+
+                        entry_cedula.delete(0, tk.END)
+                        entry_cedula.insert(0, cedula)
+
+                        entry_placa.delete(0, tk.END)
+                        entry_placa.insert(0, placa)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Error de base de datos:\n{e}")
+            
+            listbox_sugerencias.place_forget()
+
+    def actualizar_letras(event=None):
+        widget_origen = event.widget if event else entry_monto
+
+        if widget_origen not in (entry_monto, entry_saldos):
+            return
+
+        valor = widget_origen.get()
+        try:
+            numero = float(valor)
+            texto = num2words(numero, lang='es').replace("coma", "punto").capitalize()
+
+            if widget_origen == entry_monto:
+                label_letras.config(text=f"Valor : {texto} pesos")
+            elif widget_origen == entry_saldos:
+                label_letras.config(text=f"Otros : {texto} pesos")
+        except:
+            label_letras.config(text="")
+
+    tk.Label(frame_formulario, text="Tarifa:").grid(row=3, column=0, padx=5, pady=3, sticky="e")
+    entry_monto = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
+    entry_monto.grid(row=3, column=1, padx=5, pady=3, sticky="w")
+    entry_monto.bind("<KeyRelease>", actualizar_letras)
+
+    # Variable con valor inicial "0"
+    var_saldos = tk.StringVar(value="0")
+    # Función para validar que no se quede vacío
+    def validar_saldo(*args):
+        valor = var_saldos.get().strip()
+        if valor == "":
+            var_saldos.set("0")
+
+    # Asociar validación al cambio de la variable
+    var_saldos.trace_add("write", validar_saldo)
+    # Crear widgets
+    tk.Label(frame_formulario, text="Otros:").grid(row=4, column=0, padx=5, pady=3, sticky="e")
+    entry_saldos = tk.Entry(frame_formulario, textvariable=var_saldos, width=ancho_widget, justify="center")
+    entry_saldos.grid(row=4, column=1, padx=5, pady=3, sticky="w")
+    entry_saldos.bind("<KeyRelease>", actualizar_letras)
+
+    tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3, sticky="e")
+    tipos_opciones = ["N-a","Inicial", "Otras deudas", "Multa"]
+    combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=27)
+    combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
+    combo_motivo.set("N-a")
+
+    # Nuevo label justo debajo del combo
+    label_letras = tk.Label(frame_formulario, text="")
+    label_letras.grid(row=6, column=1, padx=5, pady=(0, 5), sticky="w")
+
+    # Crea el frame para las sugerencias
+    frame_sugerencias = tk.Frame(frame_formulario, width=150, height=100)  # Ajusta según necesidad
+    frame_sugerencias.grid(row=0, column=2, rowspan=5, padx=5, pady=3, sticky="nsew")
+    # Crea el Listbox dentro del frame_sugerencias
+    listbox_sugerencias = tk.Listbox(frame_sugerencias, height=10, width=30, justify="center")  # Ajusta el width
+    listbox_sugerencias.grid(row=0, column=0, sticky="nsew") 
+
+    # Hacer que el frame_sugerencias pueda expandirse
+    frame_sugerencias.grid_rowconfigure(0, weight=1)  # Hace que el Listbox se expanda
+    frame_sugerencias.grid_columnconfigure(0, weight=1)  # Hace que el Listbox se expanda
+    # Vínculo para detectar selección
+    listbox_sugerencias.bind("<<ListboxSelect>>", seleccionar_sugerencia)
+    # Actualizar las sugerencias
+
+    fecha_actual = datetime.now().date().strftime('%d-%m-%Y')
+    tk.Label(frame_formulario, text="Fecha_sistema:").grid(row=0, column=3, padx=5, pady=3, sticky="e")
+    entry_hoy = tk.Entry(frame_formulario, width=28, justify="center", font=("Helvetica", 10, "bold"))
+    entry_hoy.insert(0, fecha_actual) 
+    entry_hoy.config(state="disabled")
+    entry_hoy.grid(row=0, column=4, padx=5, pady=3, sticky="e")
+
+    tk.Label(frame_formulario, text="Fecha_registro:").grid(row=1, column=3, padx=5, pady=3, sticky="e")
+    entry_fecha = DateEntry(
+        frame_formulario,
+        width=ancho_widget,
+        background='darkblue',
+        foreground='white',
+        borderwidth=2,
+        date_pattern='dd-MM-yyyy',  # Establecer el formato Día-Mes-Año
+        locale='es_ES',  # Establecer la localidad a español para garantizar formato correcto
+        textvariable=tk.StringVar()  # Para inicializar vacío
+    )
+    entry_fecha.configure(justify="center")
+    entry_fecha.grid(row=1, column=4, padx=5, pady=3, sticky="w")
+
+    tk.Label(frame_formulario, text="Tipo:").grid(row=2, column=3, padx=5, pady=3, sticky="e")
+    tipos_opciones = ["Consignación", "Transfer Nequi", "Bancolombia", "Transfiya", "PTM", "Efectivo", "Ajuste P/P"]
+    combo_tipo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=ancho_widget)
+    combo_tipo.grid(row=2, column=4, padx=5, pady=3, sticky="w")
+
+    tk.Label(frame_formulario, text="Referencia:", font=("Segoe UI", 10, "bold"), fg="red").grid(row=3, column=3, padx=5, pady=3, sticky="e")
+    var_referencia = tk.StringVar()
+
+    def to_uppercase(*args):
+        var_referencia.set(var_referencia.get().upper())
+
+    var_referencia.trace_add("write", to_uppercase)
+    entry_referencia = tk.Entry(frame_formulario, width=33, justify="center", textvariable=var_referencia)
+    entry_referencia.grid(row=3, column=4, padx=5, pady=3, sticky="w")
+
+    # Combobox cargando las opciones de nequis.json
+    tk.Label(frame_formulario, text="Cuenta:").grid(row=4, column=3, padx=5, pady=3, sticky="e")
+    combo_nequi = ttk.Combobox(frame_formulario, values=nequi_opciones, state="disabled", width=ancho_widget)
+    combo_nequi.grid(row=4, column=4, padx=5, pady=3, sticky="w")
+
+    # Asociar la función de actualización de nequi al Entry de placa
+    def llenar_nequi_por_placa():
+        placa = entry_placa.get().strip()
+        if not placa:
+            combo_nequi.set("")  # Limpia si no hay placa
+            return
+
+        try:
+            with engine.connect() as conn:
+                stmt = (
+                    select(tabla_propietario.c.cuenta)
+                    .where(tabla_propietario.c.placa == placa)
+                    .limit(1)
                 )
                 resultado = conn.execute(stmt).fetchone()
 
                 if resultado:
-                    cedula, placa = resultado
+                    cuenta = resultado[0]
+                    combo_nequi.set(cuenta)
+                else:
+                    combo_nequi.set("")  # No encontró placa
+        except Exception as e:
+            print(f"💥 Error consultando la base de datos: {e}")
+            combo_nequi.set("")  # Limpia combo ante error
 
-                    entry_cedula.delete(0, tk.END)
-                    entry_cedula.insert(0, cedula)
+    def actualizar_nequi(*args):
+        """Habilita o deshabilita combo_nequi según la opción en combo_tipo."""
+        tipo = combo_tipo.get().strip()
 
-                    entry_placa.delete(0, tk.END)
-                    entry_placa.insert(0, placa)
+        if tipo == "Efectivo":
+            combo_nequi.set("Efectivo")
+            combo_nequi.config(state="disabled")
+        elif tipo in ("", "Ajuste P/P"):
+            combo_nequi.set("Ajuste P/P")
+            combo_nequi.config(state="disabled")
+        else:
+            combo_nequi.config(state="normal")
+            llenar_nequi_por_placa()
+
+    def actualizar_referencia(*args):
+        # Obtener el valor del combo "Tipo"
+        tipo_seleccionado = ["Efectivo", "Ajuste P/P"]
+        # Actualizar el texto del Entry de referencia según el tipo seleccionado
+        if combo_tipo.get() in tipo_seleccionado:
+            entry_referencia.delete(0, tk.END)
+            entry_referencia.config(state="readonly")  # Desactiva edición
+        else:
+            entry_referencia.config(state="normal")  # Activa edición
+            
+    def actualizar_todo(*args):
+        actualizar_nequi()
+        actualizar_referencia()
+
+    # Asociar el cambio en el combo "Tipo" a la función
+    combo_tipo.bind("<<ComboboxSelected>>", actualizar_todo)
+
+    tk.Label(frame_formulario, text="Verificada:").grid(row=5, column=3, padx=5, pady=3, sticky="e")
+    verificada_opciones = ["", "Si", "No"]
+    combo_verificada = ttk.Combobox(frame_formulario, values=verificada_opciones, state="readonly", width=ancho_widget)
+    combo_verificada.grid(row=5, column=4, padx=5, pady=3, sticky="w")
+    combo_verificada.set("No")  # Establecer "No" como valor por defecto
+
+    tk.Label(frame_formulario, text="Otras_deudas:").grid(row=6, column=3, padx=5, pady=3, sticky="e")
+    entry_deuda_taller = tk.Entry(frame_formulario, width=33, justify="center", state="readonly")
+    entry_deuda_taller.grid(row=6, column=4, padx=5, pady=3, sticky="w")
+    # Vincular las entradas con el actualizador
+    cedula_var.trace_add("write", actualizar_deudas)
+    placa_var.trace_add("write", actualizar_deudas)
+
+    # Función para cargar imágenes con tamaño uniforme
+    # === GLOBAL ===
+    imagenes = {}
+
+    def cargar_imagen(nombre):
+        if nombre in imagenes:
+            return imagenes[nombre]
+
+        path = f"img/{nombre}.png"
+        img = Image.open(path)
+        img = img.resize((20, 20), Image.Resampling.LANCZOS)
+        img_tk = ImageTk.PhotoImage(img)
+        imagenes[nombre] = img_tk  # 💾 Se guarda para que no se pierda
+        return img_tk
+
+    # Variable global para guardar los datos originales del Tree
+    datos_tree_original = []
+
+    def tomar_foto_tree(tree):
+        global datos_tree_original
+        datos_tree_original = []
+        for child in tree.get_children():
+            datos_tree_original.append(tree.item(child)["values"])
+
+    # --- Cuadro de sugerencias de valor ---
+    frame_sugerido = tk.Frame(frame_izquierdo, bd=2, relief="solid", padx=5, pady=5)
+    frame_sugerido.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+    for col in range(7):  # Ahora 7 columnas
+        frame_sugerido.grid_columnconfigure(col, weight=1)
+
+    btn_style = {
+        "font": ("Arial", 10, "bold"),
+        "relief": "ridge",
+        "bd": 2,
+        "height": 1,
+        "cursor": "hand2",
+        "width": 10
+    }
+
+    #valor_cuota_actual = 0.0  # Valor por defecto
+
+    def set_monto(valor):
+        if valor > 0:
+            entry_monto.delete(0, tk.END)
+            entry_monto.insert(0, f"{valor:.0f}")
+
+    # --- Botones dinámicos (por valor_cuota) ---
+    btn_1 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual), bg="#e1f5fe", **btn_style)
+    btn_2 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 2), bg="#e1f5fe", **btn_style)
+    btn_3 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 3), bg="#e1f5fe", **btn_style)
+    # --- Botones genéricos ---
+    btn_50k  = tk.Button(frame_sugerido, text="$50.000",  command=lambda: set_monto(50000),  bg="#fff8dc", **btn_style)   # beige claro
+    btn_100k = tk.Button(frame_sugerido, text="$100.000", command=lambda: set_monto(100000), bg="#fff9c4", **btn_style)  # amarillo claro
+    btn_200k = tk.Button(frame_sugerido, text="$200.000", command=lambda: set_monto(200000), bg="#ffe0b2", **btn_style)  # naranja claro
+
+    # --- Botón de actualización ---
+    btn_actualizar = tk.Button(
+        frame_sugerido, text="🔄", font=("Arial", 12, "bold"),
+        bg="#c8e6c9", relief="groove", bd=2, height=1, command=lambda: actualizar_sugerencias_cuota()
+    )
+
+    # --- Ubicar todos en el grid ---
+    btn_1.grid(row=0, column=0, padx=3, pady=2, sticky="ew")
+    btn_2.grid(row=0, column=1, padx=3, pady=2, sticky="ew")
+    btn_3.grid(row=0, column=2, padx=3, pady=2, sticky="ew")
+    btn_50k.grid(row=0, column=3, padx=3, pady=2, sticky="ew")
+    btn_100k.grid(row=0, column=4, padx=3, pady=2, sticky="ew")
+    btn_200k.grid(row=0, column=5, padx=3, pady=2, sticky="ew")
+    btn_actualizar.grid(row=0, column=6, padx=3, pady=2, sticky="ew")
+
+    # --- Lógica de actualización ---
+    def actualizar_sugerencias_cuota():
+        global valor_cuota_actual
+        placa = entry_placa.get().strip()
+        cedula = entry_cedula.get().strip()
+
+        if not placa or not cedula:
+            valor_cuota_actual = 0
+            for btn in [btn_1, btn_2, btn_3]:
+                btn.config(text="---", state="disabled")
+            entry_monto.delete(0, tk.END)
+            return
+
+        try:
+            with engine.connect() as conn:
+                stmt = select(tabla_clientes.c.valor_cuota).where(
+                    (tabla_clientes.c.placa == placa) &
+                    (tabla_clientes.c.cedula == cedula)
+                )
+                result = conn.execute(stmt).fetchone()
+
+                if result:
+                    valor_cuota_actual = float(result[0])
+                    btn_1.config(text=f"${valor_cuota_actual:,.0f}", state="normal")
+                    btn_2.config(text=f"${valor_cuota_actual * 2:,.0f}", state="normal")
+                    btn_3.config(text=f"${valor_cuota_actual * 3:,.0f}", state="normal")
+                else:
+                    valor_cuota_actual = 0
+                    for btn in [btn_1, btn_2, btn_3]:
+                        btn.config(text="---", state="disabled")
+                    entry_monto.delete(0, tk.END)
 
         except Exception as e:
-            messagebox.showerror("Error", f"Error de base de datos:\n{e}")
-        
-        listbox_sugerencias.place_forget()
+            print(f"Error al consultar cuota sugerida: {e}")
+            valor_cuota_actual = 0
+            for btn in [btn_1, btn_2, btn_3]:
+                btn.config(text="---", state="disabled")
+            entry_monto.delete(0, tk.END)
 
-def actualizar_letras(event=None):
-    widget_origen = event.widget if event else entry_monto
+    # Frame de los botones
+    frame_botones = tk.Frame(frame_izquierdo, bd=2, relief="solid")
+    frame_botones.grid(row=2, column=0, padx=5, pady=5, sticky="ew")  # Se expande en X
+    frame_botones.grid_columnconfigure(0, weight=1)
+    frame_botones.grid_columnconfigure(1, weight=1)
+    frame_botones.grid_columnconfigure(2, weight=1)
 
-    if widget_origen not in (entry_monto, entry_saldos):
-        return
+    btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, usuario))
+    btn_agregar.grid(row=0, column=0, padx=3, pady=2, sticky="ew")
 
-    valor = widget_origen.get()
+    btn_consultar = tk.Button(frame_botones, text=" Consultar", image=cargar_imagen("Buscar"), compound="left", width=ancho_widget, command=lambda: (cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada), tomar_foto_tree(tree)))
+    btn_consultar.grid(row=0, column=1, padx=3, pady=2, sticky="ew")
+
+    btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree))
+    btn_limpiar.grid(row=0, column=2, padx=3, pady=2, sticky="ew")
+
+    btn_cuentas = tk.Button(frame_botones, text=" Cuentas", image=cargar_imagen("Cuenta"), compound="left", width=ancho_widget, command=abrir_ventana_cuentas)
+    btn_cuentas.grid(row=1, column=0, padx=3, pady=2, sticky="ew")
+
+    btn_clientes = tk.Button(frame_botones, text=" Conductores", image=cargar_imagen("Cliente"), compound="left", width=ancho_widget, command=abrir_ventana_clientes)
+    btn_clientes.grid(row=1, column=1, padx=3, pady=2, sticky="ew")
+
+    btn_extracto = tk.Button(frame_botones, text=" Extracto", image=cargar_imagen("Extracto"), compound="left", width=ancho_widget, command=lambda: mostrar_registros(entry_cedula))
+    btn_extracto.grid(row=1, column=2, padx=3, pady=2, sticky="ew")
+
+    btn_mora = tk.Button(frame_botones, text=" Reporte atrasos", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
+    btn_mora.grid(row=2, column=0, padx=3, pady=2, sticky="ew")
+
+    btn_propietario = tk.Button(frame_botones, text=" Aliados", image=cargar_imagen("llave"), compound="left" , width=ancho_widget,  command=ventana_propietario)
+    btn_propietario.grid(row=2, column=1, padx=3, pady=2, sticky="ew")
+
+    btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=crear_resumen_por_cuenta_y_motivo)
+    btn_balance.grid(row=2, column=2, padx=3, pady=2, sticky="ew")
+
+    btn_export = tk.Button(frame_botones, text=" Multas", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=iniciar_consulta_multas)
+    btn_export.grid(row=3, column=0, padx=3, pady=2, sticky="ew")
+
+    btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
+    btn_garage.grid(row=3, column=1, padx=3, pady=2, sticky="ew")
+
+    btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=iniciar_ventana_deudas)
+    btn_deudas.grid(row=3, column=2, padx=3, pady=2, sticky="ew")
+
+    if nivel == "Admin":
+        btn_editor = tk.Button(frame_botones, text=" Editar", image=cargar_imagen("Editar"), compound="left", width=ancho_widget, command=lanzar_editor_registros)
+        btn_editor.grid(row=4, column=0, padx=3, pady=2, sticky="ew")
+
+    if nivel == "Admin":
+        btn_placas = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
+        btn_placas.grid(row=4, column=1, padx=3, pady=2, sticky="ew")
+
+    if nivel == "Admin":
+        btn_caja = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
+        btn_caja.grid(row=4, column=1, padx=3, pady=2, sticky="ew")
+
+    # Frame de información (derecha)
+    frame_derecho = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
+    frame_derecho.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+    # Expandir proporcionalmente
+    frame_superior.columnconfigure(1, weight=1)
+    frame_superior.rowconfigure(0, weight=1)
+    # Configurar el grid interno de frame_derecho
+    frame_derecho.columnconfigure(0, weight=1)  # única columna
+    frame_derecho.rowconfigure(0, weight=0)     # imagen (fijo)
+    frame_derecho.rowconfigure(1, weight=1)     # sub-frame puede expandirse si se necesita
+    # === Imagen ===
     try:
-        numero = float(valor)
-        texto = num2words(numero, lang='es').replace("coma", "punto").capitalize()
-
-        if widget_origen == entry_monto:
-            label_letras.config(text=f"Valor : {texto} pesos")
-        elif widget_origen == entry_saldos:
-            label_letras.config(text=f"Otros : {texto} pesos")
-    except:
-        label_letras.config(text="")
-
-tk.Label(frame_formulario, text="Tarifa:").grid(row=3, column=0, padx=5, pady=3, sticky="e")
-entry_monto = tk.Entry(frame_formulario, width=ancho_widget, justify="center")
-entry_monto.grid(row=3, column=1, padx=5, pady=3, sticky="w")
-entry_monto.bind("<KeyRelease>", actualizar_letras)
-
-# Variable con valor inicial "0"
-var_saldos = tk.StringVar(value="0")
-# Función para validar que no se quede vacío
-def validar_saldo(*args):
-    valor = var_saldos.get().strip()
-    if valor == "":
-        var_saldos.set("0")
-
-# Asociar validación al cambio de la variable
-var_saldos.trace_add("write", validar_saldo)
-# Crear widgets
-tk.Label(frame_formulario, text="Otros:").grid(row=4, column=0, padx=5, pady=3, sticky="e")
-entry_saldos = tk.Entry(frame_formulario, textvariable=var_saldos, width=ancho_widget, justify="center")
-entry_saldos.grid(row=4, column=1, padx=5, pady=3, sticky="w")
-entry_saldos.bind("<KeyRelease>", actualizar_letras)
-
-tk.Label(frame_formulario, text="Motivo:").grid(row=5, column=0, padx=5, pady=3, sticky="e")
-tipos_opciones = ["N-a","Inicial", "Otras deudas", "Multa"]
-combo_motivo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=27)
-combo_motivo.grid(row=5, column=1, padx=5, pady=3, sticky="w")
-combo_motivo.set("N-a")
-
-# Nuevo label justo debajo del combo
-label_letras = tk.Label(frame_formulario, text="")
-label_letras.grid(row=6, column=1, padx=5, pady=(0, 5), sticky="w")
-
-# Crea el frame para las sugerencias
-frame_sugerencias = tk.Frame(frame_formulario, width=150, height=100)  # Ajusta según necesidad
-frame_sugerencias.grid(row=0, column=2, rowspan=5, padx=5, pady=3, sticky="nsew")
-# Crea el Listbox dentro del frame_sugerencias
-listbox_sugerencias = tk.Listbox(frame_sugerencias, height=10, width=30, justify="center")  # Ajusta el width
-listbox_sugerencias.grid(row=0, column=0, sticky="nsew") 
-
-# Hacer que el frame_sugerencias pueda expandirse
-frame_sugerencias.grid_rowconfigure(0, weight=1)  # Hace que el Listbox se expanda
-frame_sugerencias.grid_columnconfigure(0, weight=1)  # Hace que el Listbox se expanda
-# Vínculo para detectar selección
-listbox_sugerencias.bind("<<ListboxSelect>>", seleccionar_sugerencia)
-# Actualizar las sugerencias
-
-fecha_actual = datetime.now().date().strftime('%d-%m-%Y')
-tk.Label(frame_formulario, text="Fecha_sistema:").grid(row=0, column=3, padx=5, pady=3, sticky="e")
-entry_hoy = tk.Entry(frame_formulario, width=28, justify="center", font=("Helvetica", 10, "bold"))
-entry_hoy.insert(0, fecha_actual) 
-entry_hoy.config(state="disabled")
-entry_hoy.grid(row=0, column=4, padx=5, pady=3, sticky="e")
-
-tk.Label(frame_formulario, text="Fecha_registro:").grid(row=1, column=3, padx=5, pady=3, sticky="e")
-entry_fecha = DateEntry(
-    frame_formulario,
-    width=ancho_widget,
-    background='darkblue',
-    foreground='white',
-    borderwidth=2,
-    date_pattern='dd-MM-yyyy',  # Establecer el formato Día-Mes-Año
-    locale='es_ES',  # Establecer la localidad a español para garantizar formato correcto
-    textvariable=tk.StringVar()  # Para inicializar vacío
-)
-entry_fecha.configure(justify="center")
-entry_fecha.grid(row=1, column=4, padx=5, pady=3, sticky="w")
-
-tk.Label(frame_formulario, text="Tipo:").grid(row=2, column=3, padx=5, pady=3, sticky="e")
-tipos_opciones = ["Consignación", "Transfer Nequi", "Bancolombia", "Transfiya", "PTM", "Efectivo", "Ajuste P/P"]
-combo_tipo = ttk.Combobox(frame_formulario, values=tipos_opciones, state="readonly", width=ancho_widget)
-combo_tipo.grid(row=2, column=4, padx=5, pady=3, sticky="w")
-
-tk.Label(frame_formulario, text="Referencia:", font=("Segoe UI", 10, "bold"), fg="red").grid(row=3, column=3, padx=5, pady=3, sticky="e")
-var_referencia = tk.StringVar()
-
-def to_uppercase(*args):
-    var_referencia.set(var_referencia.get().upper())
-
-var_referencia.trace_add("write", to_uppercase)
-entry_referencia = tk.Entry(frame_formulario, width=33, justify="center", textvariable=var_referencia)
-entry_referencia.grid(row=3, column=4, padx=5, pady=3, sticky="w")
-
-# Combobox cargando las opciones de nequis.json
-tk.Label(frame_formulario, text="Cuenta:").grid(row=4, column=3, padx=5, pady=3, sticky="e")
-combo_nequi = ttk.Combobox(frame_formulario, values=nequi_opciones, state="disabled", width=ancho_widget)
-combo_nequi.grid(row=4, column=4, padx=5, pady=3, sticky="w")
-
-# Asociar la función de actualización de nequi al Entry de placa
-def llenar_nequi_por_placa():
-    placa = entry_placa.get().strip()
-    if not placa:
-        combo_nequi.set("")  # Limpia si no hay placa
-        return
-
-    try:
-        with engine.connect() as conn:
-            stmt = (
-                select(tabla_propietario.c.cuenta)
-                .where(tabla_propietario.c.placa == placa)
-                .limit(1)
-            )
-            resultado = conn.execute(stmt).fetchone()
-
-            if resultado:
-                cuenta = resultado[0]
-                combo_nequi.set(cuenta)
-            else:
-                combo_nequi.set("")  # No encontró placa
+        img = Image.open("img/Empresa.png")
+        img = ImageTk.PhotoImage(img)
     except Exception as e:
-        print(f"💥 Error consultando la base de datos: {e}")
-        combo_nequi.set("")  # Limpia combo ante error
+        print(f"Error al cargar la imagen: {e}")
+        img = None
 
-def actualizar_nequi(*args):
-    """Habilita o deshabilita combo_nequi según la opción en combo_tipo."""
-    tipo = combo_tipo.get().strip()
+    if img:
+        label_imagen = tk.Label(frame_derecho, image=img, bg="#f0f0f0")
+        label_imagen.grid(row=0, column=0, pady=(0, 10))
+        label_imagen.image = img  # Referencia viva
+    # === Sub-frame debajo de la imagen ===
+    subframe_datos = tk.Frame(frame_derecho, bg="#f0f0f0")
+    subframe_datos.grid(row=1, column=0, sticky="n")
+    # Configurar columnas en sub-frame
+    subframe_datos.columnconfigure(0, weight=0)  # Label
+    subframe_datos.columnconfigure(1, weight=1)  # Entry (para que se estire si hay espacio)
+    # Elementos nuevos dentro del sub-frame
 
-    if tipo == "Efectivo":
-        combo_nequi.set("Efectivo")
-        combo_nequi.config(state="disabled")
-    elif tipo in ("", "Ajuste P/P"):
-        combo_nequi.set("Ajuste P/P")
-        combo_nequi.config(state="disabled")
-    else:
-        combo_nequi.config(state="normal")
-        llenar_nequi_por_placa()
+    # Etiqueta para mostrar el estado de conexión
+    def verificar_conexion():
+        try:
+            with engine.connect() as conn:
+                pass
+            return True
+        except Exception as e:
+            logging.warning(f"🔌 Sin conexión: {e}")
+            return False
 
-def actualizar_referencia(*args):
-    # Obtener el valor del combo "Tipo"
-    tipo_seleccionado = ["Efectivo", "Ajuste P/P"]
-    # Actualizar el texto del Entry de referencia según el tipo seleccionado
-    if combo_tipo.get() in tipo_seleccionado:
-        entry_referencia.delete(0, tk.END)
-        entry_referencia.config(state="readonly")  # Desactiva edición
-    else:
-        entry_referencia.config(state="normal")  # Activa edición
-        
-def actualizar_todo(*args):
-    actualizar_nequi()
-    actualizar_referencia()
+    def actualizar_estado():
+        if verificar_conexion():
+            estado_label.config(text="🟢 En línea", fg="green")
+        else:
+            estado_label.config(text="🔴 Sin conexión", fg="red")
+        ventana.after(10000, actualizar_estado)  # Reintenta cada 10 segundos
 
-# Asociar el cambio en el combo "Tipo" a la función
-combo_tipo.bind("<<ComboboxSelected>>", actualizar_todo)
+    # Función para filtrar los datos del Treeview por referencia
+    def filtrar_por_referencia(event):
+        global datos_tree_original
 
-tk.Label(frame_formulario, text="Verificada:").grid(row=5, column=3, padx=5, pady=3, sticky="e")
-verificada_opciones = ["", "Si", "No"]
-combo_verificada = ttk.Combobox(frame_formulario, values=verificada_opciones, state="readonly", width=ancho_widget)
-combo_verificada.grid(row=5, column=4, padx=5, pady=3, sticky="w")
-combo_verificada.set("No")  # Establecer "No" como valor por defecto
+        # Capturar el texto del entry y pasarlo a minúsculas
+        filtro = entry_codigo.get().lower()
 
-tk.Label(frame_formulario, text="Otras_deudas:").grid(row=6, column=3, padx=5, pady=3, sticky="e")
-entry_deuda_taller = tk.Entry(frame_formulario, width=33, justify="center", state="readonly")
-entry_deuda_taller.grid(row=6, column=4, padx=5, pady=3, sticky="w")
-# Vincular las entradas con el actualizador
-cedula_var.trace_add("write", actualizar_deudas)
-placa_var.trace_add("write", actualizar_deudas)
+        # Si todavía no se ha guardado la "foto" original del Treeview, captúrala
+        #if not datos_tree_original:
+        #    for child in tree.get_children():
+        #        datos_tree_original.append(tree.item(child)["values"])
 
-# Función para cargar imágenes con tamaño uniforme
-imagenes = {}
-def cargar_imagen(nombre):
-    img = Image.open(f"img/{nombre}.png")
-    img = img.resize((20, 20), Image.Resampling.LANCZOS)
-    img_tk = ImageTk.PhotoImage(img)
-    imagenes[nombre] = img_tk
-    return img_tk
+        # Limpiar el Treeview
+        for item in tree.get_children():
+            tree.delete(item)
 
-# Variable global para guardar los datos originales del Tree
-datos_tree_original = []
+        # Si no hay filtro, restaurar todos los datos originales
+        if filtro == "":
+            for row in datos_tree_original:
+                tree.insert("", "end", values=row)
+        else:
+            # Insertar solo las filas donde la columna Referencia (columna 10) coincida
+            for row in datos_tree_original:
+                if filtro in str(row[11]).lower():
+                    tree.insert("", "end", values=row)
 
-def tomar_foto_tree(tree):
-    global datos_tree_original
-    datos_tree_original = []
-    for child in tree.get_children():
-        datos_tree_original.append(tree.item(child)["values"])
+    label_codigo = tk.Label(subframe_datos, text="Filtrar Ref:", bg="#f0f0f0", font=("Arial", 10))
+    label_codigo.grid(row=0, column=0, sticky="e", padx=(0, 5))
+    entry_codigo = tk.Entry(subframe_datos, width=30)
+    entry_codigo.grid(row=0, column=1, sticky="we")
+    # Validar conexion con servidor
+    estado_label = tk.Label(subframe_datos, text="Verificando conexión...", font=("Segoe UI", 10, "bold"))
+    estado_label.grid(row=0, column=2 ,padx=10, pady=10)
 
-# --- Cuadro de sugerencias de valor ---
-frame_sugerido = tk.Frame(frame_izquierdo, bd=2, relief="solid", padx=5, pady=5)
-frame_sugerido.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-for col in range(7):  # Ahora 7 columnas
-    frame_sugerido.grid_columnconfigure(col, weight=1)
+    entry_codigo.bind("<Return>", filtrar_por_referencia)
 
-btn_style = {
-    "font": ("Arial", 10, "bold"),
-    "relief": "ridge",
-    "bd": 2,
-    "height": 2,
-    "cursor": "hand2",
-    "width": 10
-}
+    # Función para ordenar el Treeview por una columna específica
+    def sort_treeview(column, reverse):
+        """Ordena el Treeview por la columna seleccionada."""
+        data = [(tree.set(item, column), item) for item in tree.get_children()]
+        data.sort(reverse=reverse, key=lambda x: x[0].isdigit() and int(x[0]) or x[0])  # Convierte números antes de ordenar
 
-valor_cuota_actual = 0.0  # Valor por defecto
+        for index, (_, item) in enumerate(data):
+            tree.move(item, '', index)  # Reorganiza los elementos en el Treeview
 
-def set_monto(valor):
-    if valor > 0:
-        entry_monto.delete(0, tk.END)
-        entry_monto.insert(0, f"{valor:.0f}")
+        # Alterna la dirección de ordenación
+        tree.heading(column, command=lambda: sort_treeview(column, not reverse))
 
-# --- Botones dinámicos (por valor_cuota) ---
-btn_1 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual), bg="#e1f5fe", **btn_style)
-btn_2 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 2), bg="#e1f5fe", **btn_style)
-btn_3 = tk.Button(frame_sugerido, text="---", command=lambda: set_monto(valor_cuota_actual * 3), bg="#e1f5fe", **btn_style)
-# --- Botones genéricos ---
-btn_50k  = tk.Button(frame_sugerido, text="$50.000",  command=lambda: set_monto(50000),  bg="#fff8dc", **btn_style)   # beige claro
-btn_100k = tk.Button(frame_sugerido, text="$100.000", command=lambda: set_monto(100000), bg="#fff9c4", **btn_style)  # amarillo claro
-btn_200k = tk.Button(frame_sugerido, text="$200.000", command=lambda: set_monto(200000), bg="#ffe0b2", **btn_style)  # naranja claro
+    # Frame para el Treeview
+    tree_frame = tk.Frame(ventana, bd=2, relief="ridge")
+    tree_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+    # Scrollbars
+    scroll_y = ttk.Scrollbar(tree_frame, orient="vertical")
+    scroll_x = ttk.Scrollbar(tree_frame, orient="horizontal")
 
-# --- Botón de actualización ---
-btn_actualizar = tk.Button(
-    frame_sugerido, text="🔄", font=("Arial", 12, "bold"),
-    bg="#c8e6c9", relief="groove", bd=2, command=lambda: actualizar_sugerencias()
-)
+    # Treeview con sus columnas
+    tree = ttk.Treeview(tree_frame, 
+                        columns=("id", "Fecha_sistema", "Fecha_registro", "Cedula", "Nombre", 
+                                "Placa", "Valor", "Otros abonos", "Motivo abono", "Tipo", "Nombre_cuenta", "Referencia", "Verificada"), 
+                        show="headings", 
+                        yscrollcommand=scroll_y.set,
+                        xscrollcommand=scroll_x.set)
 
-# --- Ubicar todos en el grid ---
-btn_1.grid(row=0, column=0, padx=3, pady=2, sticky="ew")
-btn_2.grid(row=0, column=1, padx=3, pady=2, sticky="ew")
-btn_3.grid(row=0, column=2, padx=3, pady=2, sticky="ew")
-btn_50k.grid(row=0, column=3, padx=3, pady=2, sticky="ew")
-btn_100k.grid(row=0, column=4, padx=3, pady=2, sticky="ew")
-btn_200k.grid(row=0, column=5, padx=3, pady=2, sticky="ew")
-btn_actualizar.grid(row=0, column=6, padx=3, pady=2, sticky="ew")
+    # Configurar las scrollbars
+    scroll_y.config(command=tree.yview)
+    scroll_x.config(command=tree.xview)
+    # Posicionar los elementos en el grid
+    tree.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
+    scroll_x.grid(row=1, column=0, sticky="ew")
+    # Permitir que el Treeview se expanda en su contenedor
+    tree_frame.grid_rowconfigure(0, weight=1)
+    tree_frame.grid_columnconfigure(0, weight=1)
+    # Configurar encabezados y alineación de columnas
+    for col in tree["columns"]:
+        tree.heading(col, text=col, command=lambda c=col: sort_treeview(c, False))
+        tree.column(col, anchor="center")
+    # Ubicar elementos en la grilla
+    tree.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
+    # Configurar expansión para que se adapte correctamente
+    ventana.grid_rowconfigure(1, weight=1)
+    ventana.grid_columnconfigure(0, weight=1)
+    tree_frame.grid_rowconfigure(0, weight=1)
+    tree_frame.grid_columnconfigure(0, weight=1)
 
-# --- Lógica de actualización ---
-def actualizar_sugerencias():
-    global valor_cuota_actual
-    placa = entry_placa.get().strip()
-    cedula = entry_cedula.get().strip()
+    # Función para manejar el doble clic en un item del Treeview
+    def on_double_click(event, tree):
+        # Obtener el item seleccionado
+        selected_item = tree.selection()
+        if not selected_item:
+            return
 
-    if not placa or not cedula:
-        valor_cuota_actual = 0
-        for btn in [btn_1, btn_2, btn_3]:
-            btn.config(text="---", state="disabled")
-        entry_monto.delete(0, tk.END)
-        return
+        # Obtener los valores del item
+        item_values = tree.item(selected_item, "values")
+        if not item_values:
+            return
+
+        # Extraer los valores
+        id_registro = item_values[0]  # ID está en la primera columna
+        verificada = item_values[12]  # 'Verificada' está en la última columna
+
+        # Verificar si el estado es "NO"
+        if verificada.upper() == "NO":
+            confirmar = messagebox.askyesno("Confirmación", "¿Desea marcar este registro como verificado?")
+            if confirmar:
+                try:
+                    with engine.begin() as conn:
+                        stmt = (
+                            update(tabla_registros)
+                            .where(tabla_registros.c.id == id_registro)
+                            .values(verificada='Si')
+                        )
+                        conn.execute(stmt)
+
+                    # Actualizar visualmente el Treeview
+                    new_values = list(item_values)
+                    new_values[12] = "Si"  # Cambiar el estado en la visualización
+                    tree.item(selected_item, values=new_values)
+
+                    entry_codigo.delete(0, tk.END)
+                    entry_codigo.focus_set()
+                    pyautogui.press('enter')
+
+                    cargar_db(
+                        tree,
+                        entry_cedula, entry_nombre, entry_placa,
+                        entry_referencia, entry_fecha,
+                        combo_tipo, combo_nequi, combo_verificada
+                    )
+                    tomar_foto_tree(tree)
+
+                    messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
+
+                except Exception as e:
+                    messagebox.showerror("Error", f"No se pudo actualizar el registro: {e}")
+
+    # Asociar el evento al Treeview
+    tree.bind("<Double-1>", lambda event: on_double_click(event, tree))
+    # Lanza verificación inicial
+    actualizar_estado()
+    ventana.mainloop()
+
+def login_screen():
+    login_win = tk.Tk()
+    login_win.title("Login de Usuario")
+    login_win.geometry("400x500")
+
+    # Imagen corporativa dentro de un frame con borde
+    from PIL import Image, ImageTk
+    logo_frame = tk.Frame(login_win, borderwidth=2, relief="groove", bg="white")
+    logo_frame.pack(pady=10)
 
     try:
-        with engine.connect() as conn:
-            stmt = select(tabla_clientes.c.valor_cuota).where(
-                (tabla_clientes.c.placa == placa) &
-                (tabla_clientes.c.cedula == cedula)
-            )
-            result = conn.execute(stmt).fetchone()
+        img = Image.open("img/Empresa.png")
+        img = img.resize((200, 200), Image.LANCZOS)
+        logo = ImageTk.PhotoImage(img)
+        tk.Label(logo_frame, image=logo).pack(padx=10, pady=10)
+    except Exception as e:
+        print("No se pudo cargar la imagen:", e)
+
+    tk.Label(login_win, text="Usuario:").pack(pady=10)
+    entry_usuario = tk.Entry(login_win)
+    entry_usuario.pack()
+
+    tk.Label(login_win, text="Contraseña:").pack(pady=10)
+    entry_password = tk.Entry(login_win, show="*")
+    entry_password.pack()
+
+    def intentar_login(event=None):
+        try:
+            usuario = entry_usuario.get().strip()
+            password = entry_password.get().strip()
+
+            if not usuario or not password:
+                messagebox.showwarning("Campos vacíos", "Por favor ingresa usuario y contraseña.")
+                return
+
+            with engine.connect() as conn:
+                query = select(tabla_usuarios).where(
+                    tabla_usuarios.c.usuario == usuario,
+                    tabla_usuarios.c.password == password
+                )
+                result = conn.execute(query).fetchone()
 
             if result:
-                valor_cuota_actual = float(result[0])
-                btn_1.config(text=f"${valor_cuota_actual:,.0f}", state="normal")
-                btn_2.config(text=f"${valor_cuota_actual * 2:,.0f}", state="normal")
-                btn_3.config(text=f"${valor_cuota_actual * 3:,.0f}", state="normal")
+                login_win.destroy()
+                launch_main_app(result.nivel, result.usuario)
             else:
-                valor_cuota_actual = 0
-                for btn in [btn_1, btn_2, btn_3]:
-                    btn.config(text="---", state="disabled")
-                entry_monto.delete(0, tk.END)
+                messagebox.showerror("Error de acceso", "Usuario o contraseña incorrectos.")
 
-    except Exception as e:
-        print(f"Error al consultar cuota sugerida: {e}")
-        valor_cuota_actual = 0
-        for btn in [btn_1, btn_2, btn_3]:
-            btn.config(text="---", state="disabled")
-        entry_monto.delete(0, tk.END)
+        except Exception as e:
+            print(f"Error al intentar login: {e}")
+            messagebox.showerror("Error crítico", f"Ocurrió un error inesperado:\n{e}")
 
-# Frame de los botones
-frame_botones = tk.Frame(frame_izquierdo, bd=2, relief="solid")
-frame_botones.grid(row=2, column=0, padx=5, pady=5, sticky="ew")  # Se expande en X
-frame_botones.grid_columnconfigure(0, weight=1)
-frame_botones.grid_columnconfigure(1, weight=1)
-frame_botones.grid_columnconfigure(2, weight=1)
+    # Crear botón con mejor estilo
+    btn_login = tk.Button(
+        login_win,
+        text="Ingresar",
+        command=intentar_login,
+        font=("Segoe UI", 12, "bold"),
+        bg="#0078D7",
+        fg="white",
+        activebackground="#005A9E",
+        activeforeground="white",
+        relief="flat",
+        cursor="hand2",
+        padx=20,
+        pady=10
+    )
+    btn_login.pack(pady=40)
 
-btn_agregar = tk.Button(frame_botones, text=" Registrar",image=cargar_imagen("Grabar"), compound="left", width=ancho_widget, command=lambda: agregar_registro(tree,entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias))
-btn_agregar.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
+    # Asociar tecla Enter al botón
+    login_win.bind("<Return>", intentar_login)
+    btn_login.focus_set()
 
-btn_consultar = tk.Button(frame_botones, text=" Consultar", image=cargar_imagen("Buscar"), compound="left", width=ancho_widget, command=lambda: (cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada), tomar_foto_tree(tree)))
-btn_consultar.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
+    login_win.mainloop()
 
-btn_limpiar = tk.Button(frame_botones, text=" Limpiar", image=cargar_imagen("Borrar"), compound="left", width=ancho_widget, command=lambda: limpiar_formulario(entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo, entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada, listbox_sugerencias, tree))
-btn_limpiar.grid(row=0, column=2, padx=3, pady=3, sticky="ew")
-
-btn_cuentas = tk.Button(frame_botones, text=" Cuentas", image=cargar_imagen("Cuenta"), compound="left", width=ancho_widget, command=abrir_ventana_cuentas)
-btn_cuentas.grid(row=1, column=0, padx=3, pady=3, sticky="ew")
-
-btn_clientes = tk.Button(frame_botones, text=" Conductores", image=cargar_imagen("Cliente"), compound="left", width=ancho_widget, command=abrir_ventana_clientes)
-btn_clientes.grid(row=1, column=1, padx=3, pady=3, sticky="ew")
-
-btn_extracto = tk.Button(frame_botones, text=" Extracto", image=cargar_imagen("Extracto"), compound="left", width=ancho_widget, command=lambda: mostrar_registros(entry_cedula))
-btn_extracto.grid(row=1, column=2, padx=3, pady=3, sticky="ew")
-
-btn_mora = tk.Button(frame_botones, text=" Reporte atrasos", image=cargar_imagen("Checklist"), compound="left", width=ancho_widget, command=lambda: crear_interfaz_atrasos(ventana, entry_cedula, entry_nombre, entry_placa))
-btn_mora.grid(row=2, column=0, padx=3, pady=3, sticky="ew")
-
-btn_propietario = tk.Button(frame_botones, text=" Aliados", image=cargar_imagen("llave"), compound="left" , width=ancho_widget,  command=ventana_propietario)
-btn_propietario.grid(row=2, column=1, padx=3, pady=3, sticky="ew")
-
-btn_balance = tk.Button(frame_botones, text=" Reportes Medios", image=cargar_imagen("Balance"), compound="left" , width=ancho_widget, command=crear_resumen_por_cuenta_y_motivo)
-btn_balance.grid(row=2, column=2, padx=3, pady=3, sticky="ew")
-
-btn_export = tk.Button(frame_botones, text=" Multas", image=cargar_imagen("Exportar"), compound="left" , width=ancho_widget, command=iniciar_consulta_multas)
-btn_export.grid(row=3, column=0, padx=3, pady=3, sticky="ew")
-
-btn_garage = tk.Button(frame_botones, text=" Taller", image=cargar_imagen("garage"), compound="left", width=ancho_widget,command=iniciar_interfaz)
-btn_garage.grid(row=3, column=1, padx=3, pady=3, sticky="ew")
-
-btn_deudas = tk.Button(frame_botones, text=" Deudas", image=cargar_imagen("debts"), compound="left", width=ancho_widget,command=iniciar_ventana_deudas)
-btn_deudas.grid(row=3, column=2, padx=3, pady=3, sticky="ew")
-
-btn_editor = tk.Button(frame_botones, text=" Editar", image=cargar_imagen("Editar"), compound="left", width=ancho_widget,command=lanzar_editor_registros)
-btn_editor.grid(row=4, column=0, padx=3, pady=3, sticky="ew")
-
-btn_placas = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
-btn_placas.grid(row=4, column=1, padx=3, pady=3, sticky="ew")
-
-btn_caja = tk.Button(frame_botones, text=" Recaudo_rep", image=cargar_imagen("Placas"), compound="left", width=ancho_widget,command=lanzar_resumen_placas)
-btn_caja.grid(row=4, column=1, padx=3, pady=3, sticky="ew")
-
-
-
-
-
-# Frame de información (derecha)
-frame_derecho = tk.Frame(frame_superior, bd=0, relief="flat", bg="#f0f0f0")
-frame_derecho.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-# Expandir proporcionalmente
-frame_superior.columnconfigure(1, weight=1)
-frame_superior.rowconfigure(0, weight=1)
-# Configurar el grid interno de frame_derecho
-frame_derecho.columnconfigure(0, weight=1)  # única columna
-frame_derecho.rowconfigure(0, weight=0)     # imagen (fijo)
-frame_derecho.rowconfigure(1, weight=1)     # sub-frame puede expandirse si se necesita
-# === Imagen ===
-try:
-    img = Image.open("img/Empresa.png")
-    img = ImageTk.PhotoImage(img)
-except Exception as e:
-    print(f"Error al cargar la imagen: {e}")
-    img = None
-
-if img:
-    label_imagen = tk.Label(frame_derecho, image=img, bg="#f0f0f0")
-    label_imagen.grid(row=0, column=0, pady=(0, 10))
-    label_imagen.image = img  # Referencia viva
-# === Sub-frame debajo de la imagen ===
-subframe_datos = tk.Frame(frame_derecho, bg="#f0f0f0")
-subframe_datos.grid(row=1, column=0, sticky="n")
-# Configurar columnas en sub-frame
-subframe_datos.columnconfigure(0, weight=0)  # Label
-subframe_datos.columnconfigure(1, weight=1)  # Entry (para que se estire si hay espacio)
-# Elementos nuevos dentro del sub-frame
-
-# Etiqueta para mostrar el estado de conexión
-def verificar_conexion():
-    try:
-        with engine.connect() as conn:
-            pass
-        return True
-    except Exception as e:
-        logging.warning(f"🔌 Sin conexión: {e}")
-        return False
-
-def actualizar_estado():
-    if verificar_conexion():
-        estado_label.config(text="🟢 En línea", fg="green")
-    else:
-        estado_label.config(text="🔴 Sin conexión", fg="red")
-    ventana.after(10000, actualizar_estado)  # Reintenta cada 10 segundos
-
-# Función para filtrar los datos del Treeview por referencia
-def filtrar_por_referencia(event):
-    global datos_tree_original
-
-    # Capturar el texto del entry y pasarlo a minúsculas
-    filtro = entry_codigo.get().lower()
-
-    # Si todavía no se ha guardado la "foto" original del Treeview, captúrala
-    #if not datos_tree_original:
-    #    for child in tree.get_children():
-    #        datos_tree_original.append(tree.item(child)["values"])
-
-    # Limpiar el Treeview
-    for item in tree.get_children():
-        tree.delete(item)
-
-    # Si no hay filtro, restaurar todos los datos originales
-    if filtro == "":
-        for row in datos_tree_original:
-            tree.insert("", "end", values=row)
-    else:
-        # Insertar solo las filas donde la columna Referencia (columna 10) coincida
-        for row in datos_tree_original:
-            if filtro in str(row[11]).lower():
-                tree.insert("", "end", values=row)
-
-label_codigo = tk.Label(subframe_datos, text="Filtrar Ref:", bg="#f0f0f0", font=("Arial", 10))
-label_codigo.grid(row=0, column=0, sticky="e", padx=(0, 5))
-entry_codigo = tk.Entry(subframe_datos, width=30)
-entry_codigo.grid(row=0, column=1, sticky="we")
-# Validar conexion con servidor
-estado_label = tk.Label(subframe_datos, text="Verificando conexión...", font=("Segoe UI", 10, "bold"))
-estado_label.grid(row=0, column=2 ,padx=10, pady=10)
-
-entry_codigo.bind("<Return>", filtrar_por_referencia)
-
-# Función para ordenar el Treeview por una columna específica
-def sort_treeview(column, reverse):
-    """Ordena el Treeview por la columna seleccionada."""
-    data = [(tree.set(item, column), item) for item in tree.get_children()]
-    data.sort(reverse=reverse, key=lambda x: x[0].isdigit() and int(x[0]) or x[0])  # Convierte números antes de ordenar
-
-    for index, (_, item) in enumerate(data):
-        tree.move(item, '', index)  # Reorganiza los elementos en el Treeview
-
-    # Alterna la dirección de ordenación
-    tree.heading(column, command=lambda: sort_treeview(column, not reverse))
-
-# Frame para el Treeview
-tree_frame = tk.Frame(ventana, bd=2, relief="ridge")
-tree_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-# Scrollbars
-scroll_y = ttk.Scrollbar(tree_frame, orient="vertical")
-scroll_x = ttk.Scrollbar(tree_frame, orient="horizontal")
-
-# Treeview con sus columnas
-tree = ttk.Treeview(tree_frame, 
-                    columns=("id", "Fecha_sistema", "Fecha_registro", "Cedula", "Nombre", 
-                            "Placa", "Valor", "Otros abonos", "Motivo abono", "Tipo", "Nombre_cuenta", "Referencia", "Verificada"), 
-                    show="headings", 
-                    yscrollcommand=scroll_y.set,
-                    xscrollcommand=scroll_x.set)
-
-# Configurar las scrollbars
-scroll_y.config(command=tree.yview)
-scroll_x.config(command=tree.xview)
-# Posicionar los elementos en el grid
-tree.grid(row=0, column=0, sticky="nsew")
-scroll_y.grid(row=0, column=1, sticky="ns")
-scroll_x.grid(row=1, column=0, sticky="ew")
-# Permitir que el Treeview se expanda en su contenedor
-tree_frame.grid_rowconfigure(0, weight=1)
-tree_frame.grid_columnconfigure(0, weight=1)
-# Configurar encabezados y alineación de columnas
-for col in tree["columns"]:
-    tree.heading(col, text=col, command=lambda c=col: sort_treeview(c, False))
-    tree.column(col, anchor="center")
-# Ubicar elementos en la grilla
-tree.grid(row=0, column=0, sticky="nsew")
-scroll_y.grid(row=0, column=1, sticky="ns")
-# Configurar expansión para que se adapte correctamente
-ventana.grid_rowconfigure(1, weight=1)
-ventana.grid_columnconfigure(0, weight=1)
-tree_frame.grid_rowconfigure(0, weight=1)
-tree_frame.grid_columnconfigure(0, weight=1)
-
-# Función para manejar el doble clic en un item del Treeview
-def on_double_click(event, tree):
-    # Obtener el item seleccionado
-    selected_item = tree.selection()
-    if not selected_item:
-        return
-
-    # Obtener los valores del item
-    item_values = tree.item(selected_item, "values")
-    if not item_values:
-        return
-
-    # Extraer los valores
-    id_registro = item_values[0]  # ID está en la primera columna
-    verificada = item_values[12]  # 'Verificada' está en la última columna
-
-    # Verificar si el estado es "NO"
-    if verificada.upper() == "NO":
-        confirmar = messagebox.askyesno("Confirmación", "¿Desea marcar este registro como verificado?")
-        if confirmar:
-            try:
-                with engine.begin() as conn:
-                    stmt = (
-                        update(tabla_registros)
-                        .where(tabla_registros.c.id == id_registro)
-                        .values(verificada='Si')
-                    )
-                    conn.execute(stmt)
-
-                # Actualizar visualmente el Treeview
-                new_values = list(item_values)
-                new_values[12] = "Si"  # Cambiar el estado en la visualización
-                tree.item(selected_item, values=new_values)
-
-                entry_codigo.delete(0, tk.END)
-                entry_codigo.focus_set()
-                pyautogui.press('enter')
-
-                cargar_db(
-                    tree,
-                    entry_cedula, entry_nombre, entry_placa,
-                    entry_referencia, entry_fecha,
-                    combo_tipo, combo_nequi, combo_verificada
-                )
-                tomar_foto_tree(tree)
-
-                messagebox.showinfo("Éxito", "Registro actualizado correctamente.")
-
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo actualizar el registro: {e}")
-
-# Asociar el evento al Treeview
-tree.bind("<Double-1>", lambda event: on_double_click(event, tree))
-# Lanza verificación inicial
-actualizar_estado()
-ventana.mainloop()
-
-
+if __name__ == "__main__":
+    login_screen()

@@ -13,6 +13,8 @@ def get_engine():
     url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{dbname}"
     return create_engine(url, pool_pre_ping=True)
 
+
+
 # Instanciar engine y metadata
 engine = get_engine()
 metadata = MetaData()
@@ -23,3 +25,4 @@ cuentas       = Table("cuentas", metadata, autoload_with=engine)
 otras_deudas  = Table("otras_deudas", metadata, autoload_with=engine)
 propietario   = Table("propietario", metadata, autoload_with=engine)
 registros     = Table("registros", metadata, autoload_with=engine)
+usuarios      = Table("usuarios", metadata, autoload_with=engine)

@@ -118,7 +118,7 @@ def cargar_db(tree, entry_cedula, entry_nombre, entry_placa, entry_referencia, e
 # ---------- Agregar registro a la base de datos ----------
 def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, entry_monto, entry_saldos, combo_motivo,
                      entry_referencia, entry_fecha, combo_tipo, combo_nequi, combo_verificada,
-                     listbox_sugerencias):
+                     listbox_sugerencias, usuario):
 
     # Obtener valores
     cedula = entry_cedula.get().strip()
@@ -250,7 +250,8 @@ def agregar_registro(tree, entry_hoy, entry_cedula, entry_nombre, entry_placa, e
                 tipo=tipo,
                 nombre_cuenta=nequi,
                 referencia=referencia,
-                verificada=verificada
+                verificada=verificada,
+                user_log=usuario  # Registrar el usuario que hizo la transacción
             )
             conn.execute(insertar)
 
@@ -2772,19 +2773,28 @@ def iniciar_ventana_deudas():
 def iniciar_consulta_multas():
     # --- FUNCIONES ---
     def consultar_multas():
-        fecha = date_entry.get_date()
+        fecha_inicio = date_entry_inicio.get_date()
+        fecha_fin = date_entry_fin.get_date()
+
+        if fecha_fin < fecha_inicio:
+            messagebox.showwarning("Rango inválido", "La fecha final no puede ser anterior a la fecha inicial.")
+            return
+
         tree.delete(*tree.get_children())
+        total_valor = 0
+        total_saldos = 0
+
         with engine.begin() as conn:
             stmt = select(tabla_registros).where(
                 and_(
                     tabla_registros.c.motivo == "Multa",
-                    tabla_registros.c.fecha_registro == fecha
+                    tabla_registros.c.fecha_registro.between(fecha_inicio, fecha_fin)
                 )
             ).order_by(tabla_registros.c.fecha_registro.desc())
 
             resultados = conn.execute(stmt).fetchall()
             if not resultados:
-                messagebox.showinfo("Sin resultados", f"No hay multas para {fecha}")
+                messagebox.showinfo("Sin resultados", f"No hay multas entre {fecha_inicio} y {fecha_fin}")
                 return
 
             for row in resultados:
@@ -2793,19 +2803,34 @@ def iniciar_consulta_multas():
                     row.valor, row.saldos, row.motivo, row.tipo, row.nombre_cuenta,
                     row.referencia, row.verificada
                 ))
+                total_valor += row.valor if row.valor else 0
+                total_saldos += row.saldos if row.saldos else 0
+
+        # --- Fila de total ---
+        tree.insert("", "end", values=(
+            "", "", "", "", "TOTAL:",
+            f"{total_valor:,.2f}",
+            f"{total_saldos:,.2f}",
+            "", "", "", "", ""
+        ))
+
     # --- UI ---
     ventana = tk.Tk()
-    ventana.title("Consultar Multas por Fecha")
+    ventana.title("Consultar Multas por Rango de Fechas")
     ventana.geometry("1300x500")
     ventana.configure(bg="white")
 
-    # Filtro por fecha
+    # Filtro por rango de fechas
     frame_filtro = tk.Frame(ventana, bg="white")
     frame_filtro.pack(pady=10)
 
-    tk.Label(frame_filtro, text="Selecciona fecha:", bg="white", font=("Arial", 10, "bold")).pack(side="left")
-    date_entry = DateEntry(frame_filtro, date_pattern="yyyy-mm-dd", width=12)
-    date_entry.pack(side="left", padx=5)
+    tk.Label(frame_filtro, text="Fecha inicio:", bg="white", font=("Arial", 10, "bold")).pack(side="left")
+    date_entry_inicio = DateEntry(frame_filtro, date_pattern="yyyy-mm-dd", width=12)
+    date_entry_inicio.pack(side="left", padx=5)
+
+    tk.Label(frame_filtro, text="Fecha fin:", bg="white", font=("Arial", 10, "bold")).pack(side="left")
+    date_entry_fin = DateEntry(frame_filtro, date_pattern="yyyy-mm-dd", width=12)
+    date_entry_fin.pack(side="left", padx=5)
 
     tk.Button(frame_filtro, text="Consultar", command=consultar_multas, bg="#3498db", fg="white").pack(side="left", padx=10)
 
@@ -2814,7 +2839,7 @@ def iniciar_consulta_multas():
     tree = ttk.Treeview(ventana, columns=cols, show="headings")
     for col in cols:
         tree.heading(col, text=col)
-        tree.column(col, anchor="center")
+        tree.column(col, anchor="center", width=100)  # Todas centradas y ancho estándar
 
     # Scrollbars
     scroll_y = ttk.Scrollbar(ventana, orient="vertical", command=tree.yview)
@@ -2826,6 +2851,8 @@ def iniciar_consulta_multas():
     scroll_x.pack(side="bottom", fill="x")
 
     ventana.mainloop()
+
+
 
 # ---------- Función para lanzar el editor de registros ----------
 def lanzar_editor_registros():
@@ -2931,7 +2958,7 @@ def lanzar_editor_registros():
     # --- Tabla de registros ---
     cols = [
         "id", "cedula", "nombre", "placa", "valor", "saldos",
-        "motivo", "tipo", "fecha_registro", "nombre_cuenta", "referencia"
+        "motivo", "tipo", "fecha_registro", "nombre_cuenta", "referencia", "user_log"
     ]
 
     tree_frame = tk.Frame(root)
@@ -2951,7 +2978,6 @@ def lanzar_editor_registros():
 
         # Alternar orden en el siguiente clic
         treeview.heading(col, command=lambda: ordenar_columna(treeview, col, not reversa))
-
 
     # --- Tu parte original con la modificación incluida ---
     tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=12)
