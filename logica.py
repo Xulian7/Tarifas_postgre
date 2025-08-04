@@ -1001,7 +1001,6 @@ def abrir_ventana_clientes():
     ventana_clientes.protocol("WM_DELETE_WINDOW", cerrar_ventana_clientes)
     return ventana_clientes
 
-
 # ---------- Cerrar ventana de clientes ----------
 def cerrar_ventana_clientes():
     global ventana_clientes
@@ -2024,7 +2023,7 @@ def reporte_atrasos():
                 ]
 
                 resultados.append({
-                    "Cedula": cedula,
+                    "Recaudo": cedula,
                     "Placa": placa,
                     "Nombre": nombre,
                     "Antigüedad": dias_transcurridos,
@@ -2062,6 +2061,26 @@ def reporte_atrasos():
 # ---------- Crear interfaz de atrasos ----------
 def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     global ventana_atrasos
+
+    # Diccionario para llevar el estado de orden por columna
+    orden_ascendente = {}
+    def ordenar_tree_columna(treeview, col, reverse):
+        try:
+            datos = [(treeview.set(k, col), k) for k in treeview.get_children('')]
+
+            # Intentar ordenar como números, si se puede
+            try:
+                datos.sort(key=lambda t: float(t[0].replace(",", "")), reverse=reverse)
+            except ValueError:
+                datos.sort(key=lambda t: t[0], reverse=reverse)
+
+            for index, (_, k) in enumerate(datos):
+                treeview.move(k, '', index)
+
+            # Alternar orden para el próximo clic
+            orden_ascendente[col] = not reverse
+        except Exception as e:
+            print(f"Error al ordenar columna {col}: {e}")
 
     if ventana_atrasos and ventana_atrasos.winfo_exists():
         ventana_atrasos.lift()
@@ -2181,8 +2200,9 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     tree.bind("<Button-3>", copiar_mensaje_personalizado)
 
     for col in columnas:
-        tree.heading(col, text=col, anchor='center')
-        tree.column(col, anchor='center', width=120)
+        tree.heading(col, text=col, anchor='center',
+                    command=lambda _col=col: ordenar_tree_columna(tree, _col, orden_ascendente.get(_col, True)))
+        tree.column(col, anchor='center', width=100)
 
     tree.grid(row=1, column=0, columnspan=2, sticky="nsew")
     frame_principal.grid_rowconfigure(1, weight=1)
@@ -2195,16 +2215,35 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     df_original = df.copy()
 
     def cargar_tree(df_view):
-        tree.delete(*tree.get_children())
-        for _, fila in df_view.iterrows():
-            valores = list(fila)
-            if str(fila["Nombre"]).strip().upper() == "TOTAL":
-                tags = ('total',)
-            elif isinstance(fila["Días de Atraso"], (int, float)) and fila["Días de Atraso"] > 10:
-                tags = ('grave',)
-            else:
-                tags = ()
-            tree.insert("", "end", values=valores, tags=tags)
+        try:
+            tree.delete(*tree.get_children())
+
+            for _, fila in df_view.iterrows():
+                valores = list(fila.fillna(""))
+
+                # Calcular la sumatoria de las últimas 10 columnas de esta fila
+                suma_ultimas_10 = sum(list(fila)[-10:])
+
+                # Reemplazar el segundo elemento con esa suma (índice 1)
+                if len(valores) > 1:
+                    valores[1] = suma_ultimas_10
+
+                # Etiquetas condicionales
+                nombre = str(fila.get("Nombre", "")).strip().upper()
+                dias_atraso = fila.get("Días de Atraso", 0)
+
+                if nombre == "TOTAL":
+                    tags = ('total',)
+                elif isinstance(dias_atraso, (int, float)) and dias_atraso > 10:
+                    tags = ('grave',)
+                else:
+                    tags = ()
+
+                tree.insert("", "end", values=valores, tags=tags)
+
+        except Exception as e:
+            print(f"Error al cargar el Treeview: {e}")
+
 
     def aplicar_filtro(event=None):
         filtro = entry_filtro.get().lower().strip()
@@ -2246,7 +2285,6 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
 
     btn_generar = tk.Button(frame_principal, text="Reporte recogidas", command=generar_nuevo_tree)
     btn_generar.grid(row=2, column=1, pady=5, sticky="w", padx=10)
-
 
 # ---------- Función para ordenar columnas en TreeView ----------
 def ordenar_por_columna(tree, col, descendente):
