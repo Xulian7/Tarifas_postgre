@@ -21,7 +21,7 @@ from conexion import engine, registros
 from sqlalchemy.orm import Session
 from conexion import engine
 from conexion import clientes as tabla_clientes, registros as tabla_registros, propietario as tabla_propietario
-from conexion import cuentas as tabla_cuentas, otras_deudas as tabla_otras_deudas
+from conexion import cuentas as tabla_cuentas, otras_deudas as tabla_otras_deudas, usuarios as tabla_usuarios
 from docx import Document
 from docx2pdf import convert
 from num2words import num2words
@@ -440,90 +440,19 @@ def obtener_datos_clientes():
 def abrir_ventana_clientes():
     
     global ventana_clientes
-
-    if ventana_clientes and ventana_clientes.winfo_exists():
-        ventana_clientes.lift()  # Trae la ventana al frente si ya existe
-        return
     
-    ventana_clientes = tk.Toplevel()
-    ventana_clientes.title("Clientes")
-    ventana_clientes.geometry("900x600")
-    icono_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'inicio.ico')
-    if os.path.exists(icono_path):
-        ventana_clientes.iconbitmap(icono_path)
-    else:
-        print("No se encontró el icono en la ruta especificada")
-
-    # Crear un Frame para contener el Treeview y la Scrollbar
-    frame_tree = ttk.Frame(ventana_clientes)
-    frame_tree.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
-
-    # Crear el Treeview dentro del Frame
-    columnas = ("Cédula", "Nombre","Nacionalidad", "Teléfono", "Dirección", 
-                "Placa","Modelo","Tarjeta propiedad", "Fecha Inicio", "Fecha Final", "Tipo Contrato", "Valor Cuota", "Estado", "Total_inicial", "Visitador", "Referencia", "Telefono_ref")
-
-    tree = ttk.Treeview(frame_tree, columns=columnas, show="headings")
-
-    # Configurar encabezados y justificar contenido al centro
-    for col in columnas:
-        tree.heading(col, text=col)
-        tree.column(col, anchor="center")
-
-    # Crear Scrollbar dentro del Frame
-    scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=scrollbar.set)
-
-    # Ubicar Treeview y Scrollbar con grid dentro del Frame
-    tree.grid(row=0, column=0, sticky="nsew")
-    scrollbar.grid(row=0, column=1, sticky="ns")
-
-    # Configurar expansión del Frame
-    frame_tree.columnconfigure(0, weight=1)
-    frame_tree.rowconfigure(0, weight=1)
-
-    # Llenar el Treeview con datos de la base de datos
-    for fila in obtener_datos_clientes():
-        tree.insert("", "end", values=fila)
-    # Ajustar automáticamente el ancho de las columnas después de insertar los datos
-    ajustar_columnas(tree)
-    
-    global datos_originales
-    datos_originales = [tree.item(item)["values"] for item in tree.get_children()]
-    
-    # Función para configurar correctamente los DateEntry
+    #-------- Funciones ------------
     def create_date_entry(parent):
         return DateEntry(parent, width=27, background='darkblue', 
                         foreground='white', borderwidth=2, 
                         date_pattern='dd-MM-yyyy',  # Establecer el formato Día-Mes-Año
                         locale='es_ES')
-
-    # Frame para los Labels y Entries
-    frame_form = ttk.LabelFrame(ventana_clientes, text="Información del Cliente")
-    frame_form.grid(row=1, column=0, columnspan=6, padx=10, pady=10, sticky="nsew")
-
-    # Diccionario para almacenar las entradas
-    entries = {}
-    
-    cedula_var = tk.StringVar()
     # Función para validar que solo sean números (Si son letras las borra)
     def validar_cedula(*args):
         valor = cedula_var.get()
         if not valor.isdigit():
             cedula_var.set("".join(filter(str.isdigit, valor)))  # Elimina caracteres no numéricos
-
-    # Agregando manualmente cada etiqueta y entrada en un diseño de 3 columnas
-    cedula_var.trace_add("write", validar_cedula)
-    lbl_cedula = ttk.Label(frame_form, text="Cédula:")
-    lbl_cedula.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-    entries["Cédula"] = ttk.Entry(frame_form, textvariable=cedula_var, width=30)
-    entries["Cédula"].grid(row=0, column=1, padx=5, pady=5, sticky="w")
-
-    nombre_var = tk.StringVar()
-    nombre_var.trace_add("write", lambda *args: nombre_var.set(nombre_var.get().title()))
-    nombre_var.trace_add("write", lambda *args: filtrar_treeview(tree, nombre_var))
-    lbl_nombre = ttk.Label(frame_form, text="Nombre:")
-    lbl_nombre.grid(row=0, column=2, padx=5, pady=5, sticky="w")
-    
+    # Función para filtrar el Treeview por nombre
     def filtrar_treeview(tree, nombre_var):
         filtro = nombre_var.get().strip().lower()
         items = tree.get_children()
@@ -538,7 +467,6 @@ def abrir_ventana_clientes():
         for fila in datos_originales:
             if filtro in fila[1].lower():
                 tree.insert("", "end", values=fila)
-    
     # Función para consultar datos del vehículo
     def consultar_datos_vehiculo(*args):
         placa = placa_var.get()
@@ -569,79 +497,7 @@ def abrir_ventana_clientes():
 
         except Exception as e:
             print(f"Error al consultar el vehículo: {e}")
-
-
-    entries["Nombre"] = ttk.Entry(frame_form, textvariable=nombre_var, width=30)
-    entries["Nombre"].grid(row=0, column=3, padx=5, pady=5, sticky="w")
-    nacion_var = tk.StringVar()
-    nacion_var.trace_add("write", lambda *args: nacion_var.set(nacion_var.get().title()))
-    lbl_nacion = ttk.Label(frame_form, text="Nacionalidad:")
-    lbl_nacion.grid(row=0, column=4, padx=4, pady=5, sticky="w")
-    entries["Nacionalidad"] = ttk.Entry(frame_form, textvariable=nacion_var, width=30)
-    entries["Nacionalidad"].grid(row=0, column=5, padx=5, pady=5, sticky="w")
-    lbl_telefono = ttk.Label(frame_form, text="Teléfono:")
-    lbl_telefono.grid(row=1, column=0, padx=0, pady=5, sticky="w")
-    entries["Teléfono"] = ttk.Entry(frame_form, width=30)
-    entries["Teléfono"].grid(row=1, column=1, padx=5, pady=5, sticky="w")
-    lbl_direccion = ttk.Label(frame_form, text="Dirección:")
-    lbl_direccion.grid(row=1, column=2, padx=5, pady=5, sticky="w")
-    entries["Dirección"] = ttk.Entry(frame_form, width=30)
-    entries["Dirección"].grid(row=1, column=3, padx=5, pady=5, sticky="w")
-    placa_var = tk.StringVar()
-    placa_var.trace_add("write", lambda *args: placa_var.set(placa_var.get().upper()))
-    placa_var.trace_add("write", consultar_datos_vehiculo)  # Consultar modelo y tarjeta
-    lbl_placa = ttk.Label(frame_form, text="Placa:")
-    lbl_placa.grid(row=1, column=4, padx=5, pady=5, sticky="w")
-    entries["Placa"] = ttk.Entry(frame_form, textvariable=placa_var, width=30)
-    entries["Placa"].grid(row=1, column=5, padx=5, pady=5, sticky="w")
-    lbl_modelo = ttk.Label(frame_form, text="Modelo:")
-    lbl_modelo.grid(row=2, column=0, padx=5, pady=5, sticky="w")
-    entries["Modelo"] = ttk.Entry(frame_form, width=30, state="readonly")
-    entries["Modelo"].grid(row=2, column=1, padx=5, pady=5, sticky="w")
-    lbl_tarjeta_propiedad = ttk.Label(frame_form, text="Tarjeta Propiedad:")
-    lbl_tarjeta_propiedad.grid(row=2, column=2, padx=5, pady=5, sticky="w")
-    entries["Tarjeta_propiedad"] = ttk.Entry(frame_form, width=30, state="readonly")
-    entries["Tarjeta_propiedad"].grid(row=2, column=3, padx=5, pady=5, sticky="w")
-    lbl_fecha_inicio = ttk.Label(frame_form, text="Fecha Inicio:")
-    lbl_fecha_inicio.grid(row=2, column=4, padx=5, pady=5, sticky="w")
-    entries["Fecha Inicio"] = create_date_entry(frame_form)
-    entries["Fecha Inicio"].grid(row=2, column=5, padx=5, pady=5, sticky="w")
-    lbl_fecha_final = ttk.Label(frame_form, text="Fecha Final:")
-    lbl_fecha_final.grid(row=3, column=0, padx=5, pady=5, sticky="w")
-    entries["Fecha Final"] = ttk.Entry(frame_form, width=30)
-    entries["Fecha Final"].grid(row=3, column=1, padx=5, pady=5, sticky="w")
-    lbl_tipo_contrato = ttk.Label(frame_form, text="Tipo Contrato:")
-    lbl_tipo_contrato.grid(row=3, column=2, padx=5, pady=5, sticky="w")
-    tipos_opciones = ["Dia", "Semana", "Quincena", "Mes", "Sin asignar"]
-    entries["Tipo Contrato"] = ttk.Combobox(frame_form, values=tipos_opciones, state="readonly", width=30)
-    entries["Tipo Contrato"].grid(row=3, column=3, padx=5, pady=5, sticky="w")
-    lbl_valor_cuota = ttk.Label(frame_form, text="Valor Cuota:")
-    lbl_valor_cuota.grid(row=3, column=4, padx=5, pady=5, sticky="w")
-    entries["Valor Cuota"] = ttk.Entry(frame_form, width=30)
-    entries["Valor Cuota"].grid(row=3, column=5, padx=5, pady=5, sticky="w")
-    lbl_estado = ttk.Label(frame_form, text="Estado:")
-    lbl_estado.grid(row=0, column=6, padx=5, pady=5, sticky="w")
-    estado_opciones = ["","activo", "inactivo"]
-    combo_estado = ttk.Combobox(frame_form, values=estado_opciones, width=30)
-    combo_estado.grid(row=0, column=7, padx=5, pady=5, sticky="w")
-    lbl_otras_deudas = ttk.Label(frame_form, text="Otras deudas:")
-    lbl_otras_deudas.grid(row=1, column=6, padx=5, pady=5, sticky="w")
-    entries["Otras deudas"] = ttk.Entry(frame_form, width=30)
-    entries["Otras deudas"].grid(row=1, column=7, padx=5, pady=5, sticky="w")
-    lbl_visitador = ttk.Label(frame_form, text="Visitador:")
-    lbl_visitador.grid(row=2, column=6, padx=5, pady=5, sticky="w")
-    entries["Visitador"] = ttk.Entry(frame_form, width=30)
-    entries["Visitador"].grid(row=2, column=7, padx=5, pady=5, sticky="w")
-    lbl_referencia = ttk.Label(frame_form, text="Referencia:")
-    lbl_referencia.grid(row=3, column=6, padx=5, pady=5, sticky="w")
-    entries["Referencia"] = ttk.Entry(frame_form, width=30)
-    entries["Referencia"].grid(row=3, column=7, padx=5, pady=5, sticky="w")
-    lbl_tel_referencia = ttk.Label(frame_form, text="Telefono Ref:")
-    lbl_tel_referencia.grid(row=3, column=8, padx=5, pady=5, sticky="w")
-    entries["Telefono Ref"] = ttk.Entry(frame_form, width=30)
-    entries["Telefono Ref"].grid(row=3, column=9, padx=5, pady=5, sticky="w")
-
-
+    # Función para ajustar el ancho de las columnas del Treeview
     def limpiar_formulario():
         """Limpia todos los campos de entrada en el formulario."""
         for entry in entries.values():
@@ -652,7 +508,7 @@ def abrir_ventana_clientes():
         entries["Tarjeta_propiedad"].delete(0, tk.END)
         entries["Tarjeta_propiedad"].config(state="readonly")
         combo_estado.set("")
-        
+    # Función para ajustar el ancho de las columnas del Treeview
     def convertir_fecha_formato_sqlite(fecha_ui):
         """Convierte una fecha de formato dd-mm-yyyy a yyyy-mm-dd"""
         try:
@@ -661,7 +517,7 @@ def abrir_ventana_clientes():
         except ValueError:
             messagebox.showerror("Error", f"Formato de fecha inválido: {fecha_ui}")
             return None
-
+    # Función para generar el contrato en PDF
     def generar_contrato(valores_dict, plantilla_path="diccionarios/contrato.docx"):
         if not os.path.exists(plantilla_path):
             return None  # ⛔ No hay plantilla
@@ -698,8 +554,7 @@ def abrir_ventana_clientes():
         # Convertir a PDF
         convert(temp_docx, salida_pdf)
         return salida_pdf
-
-
+    # Función para obtener los datos de clientes desde la base de datos
     def registrar_cliente():
         # Obtener valores de los campos
         valores = [
@@ -818,7 +673,7 @@ def abrir_ventana_clientes():
         global datos_originales
         datos_originales = [tree.item(item)["values"] for item in tree.get_children()]
         ventana_clientes.focus_force()
-
+    # Función para actualizar un cliente existente
     def actualizar_cliente():
         # Obtener valores del formulario
         valores = {
@@ -943,7 +798,7 @@ def abrir_ventana_clientes():
         global datos_originales
         datos_originales = [tree.item(item)["values"] for item in tree.get_children()]
         ventana_clientes.focus_force()
-
+    # Función para cargar los datos seleccionados del Treeview en el formulario
     def cargar_datos_desde_treeview():
         # Carga los datos seleccionados del Treeview en los campos del formulario.
         seleccion = tree.selection()
@@ -999,28 +854,153 @@ def abrir_ventana_clientes():
         entries["Telefono Ref"].delete(0, tk.END)
         entries["Telefono Ref"].insert(0, valores[16])
 
-    # Configurar estilo de los botones
+    if ventana_clientes and ventana_clientes.winfo_exists():
+        ventana_clientes.lift()  # Trae la ventana al frente si ya existe
+        return
+    
+    ventana_clientes = tk.Toplevel()
+    ventana_clientes.title("Clientes")
+    ventana_clientes.geometry("900x600")
+    icono_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'inicio.ico')
+    if os.path.exists(icono_path):
+        ventana_clientes.iconbitmap(icono_path)
+    else:
+        print("No se encontró el icono en la ruta especificada")
+
+    # === Botones (arriba) ===
     style = ttk.Style()
     style.configure("TButton", font=("Arial", 12, "bold"), padding=6, width=12)
     style.configure("BotonCrear.TButton", background="#4CAF50", foreground="black")
     style.configure("BotonModificar.TButton", background="#FFC107", foreground="black")
     style.configure("BotonLimpiar.TButton", background="#F44336", foreground="black")
-    # Configurar el frame con un borde
+
     frame_buttons = ttk.Frame(ventana_clientes, relief="ridge", borderwidth=3)
-    frame_buttons.grid(row=2, column=0, columnspan=4, pady=10, padx=10, sticky="ew")
-    # Botones Crear, Modificar, Limpiar con estilos personalizados
+    frame_buttons.grid(row=0, column=0, columnspan=4, pady=10, padx=10, sticky="ew")
+
     btn_crear = ttk.Button(frame_buttons, text="Crear", command=registrar_cliente, style="BotonCrear.TButton")
     btn_crear.grid(row=0, column=0, padx=10, pady=5)
     btn_modificar = ttk.Button(frame_buttons, text="Modificar", command=actualizar_cliente, style="BotonModificar.TButton")
     btn_modificar.grid(row=0, column=1, padx=10, pady=5)
     btn_limpiar = ttk.Button(frame_buttons, text="Limpiar", command=limpiar_formulario, style="BotonLimpiar.TButton")
     btn_limpiar.grid(row=0, column=2, padx=10, pady=5)
+
+    # === Formulario (arriba) ===
+    frame_form = ttk.LabelFrame(ventana_clientes, text="Información del Cliente")
+    frame_form.grid(row=1, column=0, columnspan=6, padx=10, pady=10, sticky="nsew")
+    entries = {}
+    cedula_var = tk.StringVar()
+    cedula_var.trace_add("write", validar_cedula)
+    lbl_cedula = ttk.Label(frame_form, text="Cédula:")
+    lbl_cedula.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    entries["Cédula"] = ttk.Entry(frame_form, textvariable=cedula_var, width=30)
+    entries["Cédula"].grid(row=0, column=1, padx=5, pady=5, sticky="w")
+    nombre_var = tk.StringVar()
+    nombre_var.trace_add("write", lambda *args: nombre_var.set(nombre_var.get().title()))
+    nombre_var.trace_add("write", lambda *args: filtrar_treeview(tree, nombre_var))
+    lbl_nombre = ttk.Label(frame_form, text="Nombre:")
+    lbl_nombre.grid(row=0, column=2, padx=5, pady=5, sticky="w")
+    entries["Nombre"] = ttk.Entry(frame_form, textvariable=nombre_var, width=30)
+    entries["Nombre"].grid(row=0, column=3, padx=5, pady=5, sticky="w")
+    nacion_var = tk.StringVar()
+    nacion_var.trace_add("write", lambda *args: nacion_var.set(nacion_var.get().title()))
+    lbl_nacion = ttk.Label(frame_form, text="Nacionalidad:")
+    lbl_nacion.grid(row=0, column=4, padx=4, pady=5, sticky="w")
+    entries["Nacionalidad"] = ttk.Entry(frame_form, textvariable=nacion_var, width=30)
+    entries["Nacionalidad"].grid(row=0, column=5, padx=5, pady=5, sticky="w")
+    lbl_telefono = ttk.Label(frame_form, text="Teléfono:")
+    lbl_telefono.grid(row=1, column=0, padx=0, pady=5, sticky="w")
+    entries["Teléfono"] = ttk.Entry(frame_form, width=30)
+    entries["Teléfono"].grid(row=1, column=1, padx=5, pady=5, sticky="w")
+    lbl_direccion = ttk.Label(frame_form, text="Dirección:")
+    lbl_direccion.grid(row=1, column=2, padx=5, pady=5, sticky="w")
+    entries["Dirección"] = ttk.Entry(frame_form, width=30)
+    entries["Dirección"].grid(row=1, column=3, padx=5, pady=5, sticky="w")
+    placa_var = tk.StringVar()
+    placa_var.trace_add("write", lambda *args: placa_var.set(placa_var.get().upper()))
+    placa_var.trace_add("write", consultar_datos_vehiculo)
+    lbl_placa = ttk.Label(frame_form, text="Placa:")
+    lbl_placa.grid(row=1, column=4, padx=5, pady=5, sticky="w")
+    entries["Placa"] = ttk.Entry(frame_form, textvariable=placa_var, width=30)
+    entries["Placa"].grid(row=1, column=5, padx=5, pady=5, sticky="w")
+    lbl_modelo = ttk.Label(frame_form, text="Modelo:")
+    lbl_modelo.grid(row=2, column=0, padx=5, pady=5, sticky="w")
+    entries["Modelo"] = ttk.Entry(frame_form, width=30, state="readonly")
+    entries["Modelo"].grid(row=2, column=1, padx=5, pady=5, sticky="w")
+    lbl_tarjeta_propiedad = ttk.Label(frame_form, text="Tarjeta Propiedad:")
+    lbl_tarjeta_propiedad.grid(row=2, column=2, padx=5, pady=5, sticky="w")
+    entries["Tarjeta_propiedad"] = ttk.Entry(frame_form, width=30, state="readonly")
+    entries["Tarjeta_propiedad"].grid(row=2, column=3, padx=5, pady=5, sticky="w")
+    lbl_fecha_inicio = ttk.Label(frame_form, text="Fecha Inicio:")
+    lbl_fecha_inicio.grid(row=2, column=4, padx=5, pady=5, sticky="w")
+    entries["Fecha Inicio"] = create_date_entry(frame_form)
+    entries["Fecha Inicio"].grid(row=2, column=5, padx=5, pady=5, sticky="w")
+    lbl_fecha_final = ttk.Label(frame_form, text="Fecha Final:")
+    lbl_fecha_final.grid(row=3, column=0, padx=5, pady=5, sticky="w")
+    entries["Fecha Final"] = ttk.Entry(frame_form, width=30)
+    entries["Fecha Final"].grid(row=3, column=1, padx=5, pady=5, sticky="w")
+    lbl_tipo_contrato = ttk.Label(frame_form, text="Tipo Contrato:")
+    lbl_tipo_contrato.grid(row=3, column=2, padx=5, pady=5, sticky="w")
+    tipos_opciones = ["Dia", "Semana", "Quincena", "Mes", "Sin asignar"]
+    entries["Tipo Contrato"] = ttk.Combobox(frame_form, values=tipos_opciones, state="readonly", width=30)
+    entries["Tipo Contrato"].grid(row=3, column=3, padx=5, pady=5, sticky="w")
+    lbl_valor_cuota = ttk.Label(frame_form, text="Valor Cuota:")
+    lbl_valor_cuota.grid(row=3, column=4, padx=5, pady=5, sticky="w")
+    entries["Valor Cuota"] = ttk.Entry(frame_form, width=30)
+    entries["Valor Cuota"].grid(row=3, column=5, padx=5, pady=5, sticky="w")
+    lbl_estado = ttk.Label(frame_form, text="Estado:")
+    lbl_estado.grid(row=0, column=6, padx=5, pady=5, sticky="w")
+    estado_opciones = ["","activo", "inactivo"]
+    combo_estado = ttk.Combobox(frame_form, values=estado_opciones, width=30)
+    combo_estado.grid(row=0, column=7, padx=5, pady=5, sticky="w")
+    lbl_otras_deudas = ttk.Label(frame_form, text="Otras deudas:")
+    lbl_otras_deudas.grid(row=1, column=6, padx=5, pady=5, sticky="w")
+    entries["Otras deudas"] = ttk.Entry(frame_form, width=30)
+    entries["Otras deudas"].grid(row=1, column=7, padx=5, pady=5, sticky="w")
+    lbl_visitador = ttk.Label(frame_form, text="Visitador:")
+    lbl_visitador.grid(row=2, column=6, padx=5, pady=5, sticky="w")
+    entries["Visitador"] = ttk.Entry(frame_form, width=30)
+    entries["Visitador"].grid(row=2, column=7, padx=5, pady=5, sticky="w")
+    lbl_referencia = ttk.Label(frame_form, text="Referencia:")
+    lbl_referencia.grid(row=3, column=6, padx=5, pady=5, sticky="w")
+    entries["Referencia"] = ttk.Entry(frame_form, width=30)
+    entries["Referencia"].grid(row=3, column=7, padx=5, pady=5, sticky="w")
+    lbl_tel_referencia = ttk.Label(frame_form, text="Telefono Ref:")
+    lbl_tel_referencia.grid(row=3, column=8, padx=5, pady=5, sticky="w")
+    entries["Telefono Ref"] = ttk.Entry(frame_form, width=30)
+    entries["Telefono Ref"].grid(row=3, column=9, padx=5, pady=5, sticky="w")
+
+    # === Treeview (abajo) ===
+    frame_tree = ttk.Frame(ventana_clientes)
+    frame_tree.grid(row=2, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
+
+    columnas = ("Cédula", "Nombre","Nacionalidad", "Teléfono", "Dirección", 
+                "Placa","Modelo","Tarjeta propiedad", "Fecha Inicio", "Fecha Final", "Tipo Contrato", "Valor Cuota", "Estado", "Total_inicial", "Visitador", "Referencia", "Telefono_ref")
+    tree = ttk.Treeview(frame_tree, columns=columnas, show="headings")
+    for col in columnas:
+        tree.heading(col, text=col)
+        tree.column(col, anchor="center")
+
+    scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    scrollbar.grid(row=0, column=1, sticky="ns")
+
+    frame_tree.columnconfigure(0, weight=1)
+    frame_tree.rowconfigure(0, weight=1)
+
+    for fila in obtener_datos_clientes():
+        tree.insert("", "end", values=fila)
+
+    ajustar_columnas(tree)
+    global datos_originales
+    datos_originales = [tree.item(item)["values"] for item in tree.get_children()]
     tree.bind("<Double-1>", lambda event: cargar_datos_desde_treeview())
-    # Expansión de filas y columnas
+
     ventana_clientes.columnconfigure(0, weight=1)
-    ventana_clientes.rowconfigure(0, weight=1)
+    ventana_clientes.rowconfigure(2, weight=1)
     ventana_clientes.protocol("WM_DELETE_WINDOW", cerrar_ventana_clientes)
-    return ventana_clientes  # Si quieres capturar la ventana creada
+    return ventana_clientes
+
 
 # ---------- Cerrar ventana de clientes ----------
 def cerrar_ventana_clientes():
@@ -1030,33 +1010,7 @@ def cerrar_ventana_clientes():
 
 # ---------- Abrir ventana de gestión de cuentas ----------
 def abrir_ventana_cuentas():
-    ventana_cuentas = tk.Toplevel()
-    ventana_cuentas.title("Gestión de Cuentas")
-    ventana_cuentas.geometry("600x400")
-    ventana_cuentas.rowconfigure(0, weight=1)
-    ventana_cuentas.columnconfigure(0, weight=1)
-
-    icono_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'inicio.ico')
-    if os.path.exists(icono_path):
-        ventana_cuentas.iconbitmap(icono_path)
-
-    frame_tabla = ttk.Frame(ventana_cuentas)
-    frame_tabla.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-    frame_tabla.rowconfigure(0, weight=1)
-    frame_tabla.columnconfigure(0, weight=1)
-
-    columnas = ("ID", "Nombre cuenta", "Llave")
-    tree = ttk.Treeview(frame_tabla, columns=columnas, show="headings")
-    scrollbar = ttk.Scrollbar(frame_tabla, orient="vertical", command=tree.yview)
-    tree.configure(yscroll=scrollbar.set)
-
-    for col in columnas:
-        tree.heading(col, text=col, anchor="center")
-        tree.column(col, anchor="center", width=150, stretch=True)
-
-    tree.grid(row=0, column=0, sticky="nsew")
-    scrollbar.grid(row=0, column=1, sticky="ns")
-
+    
     def cargar_datos():
         try:
             tree.delete(*tree.get_children())
@@ -1140,43 +1094,84 @@ def abrir_ventana_cuentas():
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo eliminar: {e}")
             ventana_cuentas.focus_force()
+    
+    ventana_cuentas = tk.Toplevel()
+    ventana_cuentas.title("Gestión de Cuentas")
+    ventana_cuentas.geometry("700x500")
+    ventana_cuentas.configure(bg="#f0f0f0")
+    ventana_cuentas.columnconfigure(0, weight=1)
+    ventana_cuentas.rowconfigure(1, weight=1)
 
-    cargar_datos()
+    # Icono
+    icono_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'inicio.ico')
+    if os.path.exists(icono_path):
+        ventana_cuentas.iconbitmap(icono_path)
 
-    # Frame para formulario
-    frame_formulario = ttk.Frame(ventana_cuentas, padding=10)
-    frame_formulario.grid(row=1, column=0, columnspan=3, pady=10, sticky="ew")
+    # ==== ESTILO ====
+    style = ttk.Style()
+    style.theme_use("default")
 
-    label_titular = ttk.Label(frame_formulario, text="Entidad Titular:")
-    label_titular.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=6)
+    style.configure("BotonCrear.TButton", background="#4CAF50", foreground="white")
+    style.map("BotonCrear.TButton", background=[("active", "#45a049")])
+
+    style.configure("BotonEliminar.TButton", background="#F44336", foreground="white")
+    style.map("BotonEliminar.TButton", background=[("active", "#d32f2f")])
+
+    style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+    style.configure("Treeview", rowheight=28, font=("Segoe UI", 10))
+
+    # ==== PANEL SUPERIOR: Formulario + Botones ====
+    frame_superior = ttk.Frame(ventana_cuentas, padding=10)
+    frame_superior.grid(row=0, column=0, sticky="ew")
+    frame_superior.columnconfigure(1, weight=1)
+
+    # Formulario
+    label_titular = ttk.Label(frame_superior, text="Entidad Titular:")
+    label_titular.grid(row=0, column=0, padx=5, pady=5, sticky="e")
 
     titular_var = tk.StringVar()
     titular_var.trace_add("write", lambda *args: titular_var.set(titular_var.get().title()))
-    entry_titular = ttk.Entry(frame_formulario, textvariable=titular_var, width=30)
-    entry_titular.grid(row=0, column=1, padx=5, pady=5)
+    entry_titular = ttk.Entry(frame_superior, textvariable=titular_var, width=30)
+    entry_titular.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-    label_llave = ttk.Label(frame_formulario, text="Llave:")
-    label_llave.grid(row=1, column=0, padx=5, pady=5, sticky="w")
+    label_llave = ttk.Label(frame_superior, text="Llave:")
+    label_llave.grid(row=1, column=0, padx=5, pady=5, sticky="e")
 
-    entry_llave = ttk.Entry(frame_formulario, width=30)
-    entry_llave.grid(row=1, column=1, padx=5, pady=5)
+    entry_llave = ttk.Entry(frame_superior, width=30)
+    entry_llave.grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
-    style = ttk.Style()
-    style.configure("TButton", font=("Arial", 12, "bold"), padding=6, width=12)
-    style.configure("BotonCrear.TButton", background="#4CAF50", foreground="black")
-    style.configure("BotonLimpiar.TButton", background="#F44336", foreground="black")
-
-    frame_botones = ttk.Frame(ventana_cuentas, relief="ridge", borderwidth=3)
-    frame_botones.grid(row=2, column=0, columnspan=4, pady=10, padx=10, sticky="ew")
+    # Botones
+    frame_botones = ttk.Frame(frame_superior)
+    frame_botones.grid(row=0, column=2, rowspan=2, padx=10, pady=5, sticky="n")
 
     btn_crear = ttk.Button(frame_botones, text="Crear", command=crear_cuenta, style="BotonCrear.TButton")
-    btn_crear.grid(row=0, column=0, padx=10, pady=5)
+    btn_crear.pack(padx=5, pady=5, fill="x")
 
-    btn_eliminar = ttk.Button(frame_botones, text="Eliminar", command=eliminar_cuenta, style="BotonLimpiar.TButton")
-    btn_eliminar.grid(row=0, column=1, padx=10, pady=5)
+    btn_eliminar = ttk.Button(frame_botones, text="Eliminar", command=eliminar_cuenta, style="BotonEliminar.TButton")
+    btn_eliminar.pack(padx=5, pady=5, fill="x")
 
-    ventana_cuentas.columnconfigure(0, weight=1)
-    ventana_cuentas.rowconfigure(0, weight=1)
+    # ==== PANEL INFERIOR: Tabla ====
+    frame_tabla = ttk.Frame(ventana_cuentas, padding=10)
+    frame_tabla.grid(row=1, column=0, sticky="nsew")
+    frame_tabla.rowconfigure(0, weight=1)
+    frame_tabla.columnconfigure(0, weight=1)
+
+    columnas = ("ID", "Nombre cuenta", "Llave")
+    tree = ttk.Treeview(frame_tabla, columns=columnas, show="headings")
+
+    for col in columnas:
+        tree.heading(col, text=col, anchor="center")
+        tree.column(col, anchor="center", width=180, stretch=True)
+
+    tree.grid(row=0, column=0, sticky="nsew")
+
+    scrollbar = ttk.Scrollbar(frame_tabla, orient="vertical", command=tree.yview)
+    scrollbar.grid(row=0, column=1, sticky="ns")
+    tree.configure(yscroll=scrollbar.set)
+
+    # Carga inicial de datos
+    cargar_datos()
 
 # ---------- Función para mostrar registros de un cliente ----------
 def mostrar_registros(entry_cedula):
@@ -2852,8 +2847,6 @@ def iniciar_consulta_multas():
 
     ventana.mainloop()
 
-
-
 # ---------- Función para lanzar el editor de registros ----------
 def lanzar_editor_registros():
     metadata = MetaData()
@@ -3067,7 +3060,6 @@ def lanzar_editor_registros():
 
     root.mainloop()
 
-
 def normalizar_placa(placa):
     placa = placa.upper().strip()
     match = re.match(r'^([A-Z]{3}\d{2,3}[A-Z]?)', placa)
@@ -3139,3 +3131,121 @@ def lanzar_resumen_placas():
     ).pack()
 
     cargar_datos()
+
+def gestionar_usuarios(root):
+    def cargar_usuarios():
+        for i in tree.get_children():
+            tree.delete(i)
+        with engine.connect() as conn:
+            result = conn.execute(select(tabla_usuarios))
+            for fila in result:
+                tree.insert("", "end", values=(fila.id, fila.usuario, fila.nivel))
+
+    def limpiar_formulario():
+        entry_id.set("")
+        entry_usuario.delete(0, tk.END)
+        entry_password.delete(0, tk.END)
+        entry_nivel.set("")
+
+    def crear_usuario():
+        usuario = entry_usuario.get().strip()
+        password = entry_password.get().strip()
+        nivel = entry_nivel.get().strip()
+        if not usuario or not password or not nivel:
+            messagebox.showwarning("Faltan datos", "Todos los campos son obligatorios.")
+            return
+        with engine.begin() as conn:
+            conn.execute(insert(tabla_usuarios).values(usuario=usuario, password=password, nivel=nivel))
+        cargar_usuarios()
+        limpiar_formulario()
+
+    def modificar_usuario():
+        id_usuario = entry_id.get()
+        if not id_usuario:
+            messagebox.showwarning("Selecciona un usuario", "Haz doble clic sobre un usuario para editarlo.")
+            return
+        usuario = entry_usuario.get().strip()
+        password = entry_password.get().strip()
+        nivel = entry_nivel.get().strip()
+        with engine.begin() as conn:
+            conn.execute(update(tabla_usuarios).where(tabla_usuarios.c.id == int(id_usuario)).values(
+                usuario=usuario, password=password, nivel=nivel))
+        cargar_usuarios()
+        limpiar_formulario()
+
+    def eliminar_usuario():
+        id_usuario = entry_id.get()
+        if not id_usuario:
+            messagebox.showwarning("Selecciona un usuario", "Haz doble clic sobre un usuario para eliminarlo.")
+            return
+        confirmar = messagebox.askyesno("Eliminar", "¿Seguro que deseas eliminar este usuario?")
+        if confirmar:
+            with engine.begin() as conn:
+                conn.execute(delete(tabla_usuarios).where(tabla_usuarios.c.id == int(id_usuario)))
+            cargar_usuarios()
+            limpiar_formulario()
+
+    def seleccionar_usuario(event):
+        item = tree.selection()
+        if item:
+            valores = tree.item(item[0], "values")
+            entry_id.set(valores[0])
+            entry_usuario.delete(0, tk.END)
+            entry_usuario.insert(0, valores[1])
+            entry_nivel.set(valores[2])
+            entry_password.delete(0, tk.END)
+
+    # --- Interfaz ---
+    win = tk.Toplevel(root)
+    win.title("Gestión de Usuarios")
+    win.geometry("600x480")
+    win.configure(bg="#f0f0f0")
+
+    entry_id = tk.StringVar()
+    entry_nivel = tk.StringVar()
+
+    form_frame = tk.Frame(win, bg="#f0f0f0", pady=10)
+    form_frame.pack(fill=tk.X, padx=10)
+
+    def campo(titulo, variable=None, show=None):
+        frame = tk.Frame(form_frame, bg="#f0f0f0")
+        frame.pack(fill=tk.X, pady=5)
+        tk.Label(frame, text=titulo, width=12, anchor="e", bg="#f0f0f0", font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
+        entry = tk.Entry(frame, textvariable=variable, show=show, width=30, font=("Segoe UI", 10))
+        entry.pack(side=tk.LEFT, padx=5)
+        return entry
+
+    entry_usuario = campo("Usuario:")
+    entry_password = campo("Contraseña:", show="*")
+    entry_nivel_cb = ttk.Combobox(form_frame, textvariable=entry_nivel, values=["Admin", "Cobrador"], width=28, font=("Segoe UI", 10))
+    entry_nivel_cb.pack(pady=5)
+
+    # Botones
+    btn_frame = tk.Frame(win, pady=10, bg="#f0f0f0")
+    btn_frame.pack()
+
+    def boton(texto, comando, color="#2980b9"):
+        return tk.Button(btn_frame, text=texto, command=comando, bg=color, fg="white", width=12, relief="flat", font=("Segoe UI", 10, "bold"))
+
+    boton("Nuevo", limpiar_formulario, "#7f8c8d").grid(row=0, column=0, padx=5)
+    boton("Crear", crear_usuario, "#27ae60").grid(row=0, column=1, padx=5)
+    boton("Modificar", modificar_usuario, "#f39c12").grid(row=0, column=2, padx=5)
+    boton("Eliminar", eliminar_usuario, "#c0392b").grid(row=0, column=3, padx=5)
+
+    # Tabla
+    tree_frame = tk.Frame(win, bg="#f0f0f0")
+    tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+    columns = ("ID", "Usuario", "Nivel")
+    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=10)
+    tree.pack(fill=tk.BOTH, expand=True)
+    tree.column("ID", width=50, anchor="center")
+    tree.column("Usuario", anchor="center")
+    tree.column("Nivel", width=100, anchor="center")
+    for col in columns:
+        tree.heading(col, text=col)
+
+    tree.bind("<Double-1>", seleccionar_usuario)
+
+    cargar_usuarios()
+    win.mainloop()
