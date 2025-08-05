@@ -2029,7 +2029,8 @@ def reporte_atrasos():
                     "Antigüedad": dias_transcurridos,
                     "Días de Atraso": round(dias_atraso, 1),
                     "Monto Adeudado": int(round(monto_esperado - total_pagado)),
-                    **{f"Día {i+1}": valor for i, valor in enumerate(pagos_dias)}
+                    **{f"Día {i+1}": valor for i, valor in enumerate(pagos_dias)},
+                    "Total": sum(pagos_dias)
                 })
 
             except (ValueError, TypeError, KeyError):
@@ -2070,21 +2071,16 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
 
             # Intentar ordenar como números, si se puede
             try:
-                datos.sort(key=lambda t: float(t[0].replace(",", "")), reverse=reverse)
+                datos.sort(key=lambda t: float(t[0]), reverse=reverse)
             except ValueError:
                 datos.sort(key=lambda t: t[0], reverse=reverse)
 
             for index, (_, k) in enumerate(datos):
                 treeview.move(k, '', index)
 
-            # Alternar orden para el próximo clic
             orden_ascendente[col] = not reverse
         except Exception as e:
             print(f"Error al ordenar columna {col}: {e}")
-
-    if ventana_atrasos and ventana_atrasos.winfo_exists():
-        ventana_atrasos.lift()
-        return
 
     df = reporte_atrasos()
     if df.empty:
@@ -2219,14 +2215,15 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
             tree.delete(*tree.get_children())
 
             for _, fila in df_view.iterrows():
-                valores = list(fila.fillna(""))
+                valores = []
+                for v in fila:
+                    if pd.isna(v):
+                        valores.append("")
+                    elif isinstance(v, (int, float)):
+                        valores.append(v)  # deja como número
+                    else:
+                        valores.append(str(v).strip())
 
-                # Calcular la sumatoria de las últimas 10 columnas de esta fila
-                suma_ultimas_10 = sum(list(fila)[-10:])
-
-                # Reemplazar el segundo elemento con esa suma (índice 1)
-                if len(valores) > 1:
-                    valores[1] = suma_ultimas_10
 
                 # Etiquetas condicionales
                 nombre = str(fila.get("Nombre", "")).strip().upper()
