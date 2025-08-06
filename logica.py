@@ -2023,7 +2023,7 @@ def reporte_atrasos():
                 ]
 
                 resultados.append({
-                    "Recaudo": cedula,
+                    "Cedula": cedula,
                     "Placa": placa,
                     "Nombre": nombre,
                     "Antigüedad": dias_transcurridos,
@@ -2192,6 +2192,7 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
     style.configure("Treeview.Heading", font=("Arial", 10, "bold"))
     tree.tag_configure('total', font=('Arial', 10, 'bold'))
     tree.tag_configure('grave', background='pink')
+    tree.tag_configure('bottom', background='lightblue')
     tree.bind("<Double-1>", copiar_placa_al_portapapeles)
     tree.bind("<Button-3>", copiar_mensaje_personalizado)
 
@@ -2210,6 +2211,8 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
 
     df_original = df.copy()
 
+    import traceback  # Asegúrate de importar esto al inicio de tu script
+
     def cargar_tree(df_view):
         try:
             tree.delete(*tree.get_children())
@@ -2224,23 +2227,34 @@ def crear_interfaz_atrasos(root_padre, entry_cedula, entry_nombre, entry_placa):
                     else:
                         valores.append(str(v).strip())
 
-
                 # Etiquetas condicionales
                 nombre = str(fila.get("Nombre", "")).strip().upper()
-                dias_atraso = fila.get("Días de Atraso", 0)
+                try:
+                    dias_atraso = float(fila.get("Días de Atraso", 0)) or 0
+                except ValueError:
+                    dias_atraso = 0
+
+                try:
+                    antiguedad = float(fila.get("Antigüedad", 0)) or 0
+                except ValueError:
+                    antiguedad = 0
+
+                tags = []
+
+                if antiguedad < 30 and dias_atraso > 5:
+                    tags.append('bottom')
 
                 if nombre == "TOTAL":
-                    tags = ('total',)
-                elif isinstance(dias_atraso, (int, float)) and dias_atraso > 10:
-                    tags = ('grave',)
-                else:
-                    tags = ()
+                    tags.append('total')
+                elif dias_atraso > 10:
+                    tags.append('grave')
 
                 tree.insert("", "end", values=valores, tags=tags)
 
-        except Exception as e:
-            print(f"Error al cargar el Treeview: {e}")
 
+        except Exception as e:
+            print("Error al cargar el Treeview:")
+            traceback.print_exc()  # Muestra la traza completa, incluida la línea exacta
 
     def aplicar_filtro(event=None):
         filtro = entry_filtro.get().lower().strip()
